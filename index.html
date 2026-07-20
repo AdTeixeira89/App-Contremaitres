@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Suivi CM" />
+  <title>Suivi Contremaîtres</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">CM</div>
+        <div>
+          <strong>Suivi CM</strong>
+          <span>Postes non travaillables</span>
+        </div>
+      </div>
+
+      <nav id="nav">
+        <button class="nav-item active" data-view="dashboard">Tableau de bord</button>
+        <button class="nav-item" data-view="new">Nouveau message</button>
+        <button class="nav-item" data-view="requests">Demandes à traiter</button>
+        <button class="nav-item" data-view="history">Historique</button>
+        <button class="nav-item" data-view="settings">Réglages</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-chip">
+          <div class="avatar">AT</div>
+          <div>
+            <strong>Adao Teixeira</strong>
+            <span>Administrateur</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button id="mobileMenu" class="icon-button" aria-label="Menu">☰</button>
+        <div>
+          <h1 id="pageTitle">Tableau de bord</h1>
+          <p id="pageSubtitle">Vue globale des demandes et des traitements</p>
+        </div>
+        <button class="primary compact" data-go="new">+ Nouveau</button>
+      </header>
+
+      <section id="view-dashboard" class="view active">
+        <div class="toolbar">
+          <select id="dashboardPeriod">
+            <option value="all">Toutes les périodes</option>
+            <option value="today">Aujourd’hui</option>
+            <option value="week">Cette semaine</option>
+            <option value="month">Ce mois</option>
+          </select>
+          <button class="secondary" id="seedDemo">Charger des exemples</button>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card danger"><span>À traiter</span><strong id="statTodo">0</strong></article>
+          <article class="stat-card warning"><span>En cours</span><strong id="statProgress">0</strong></article>
+          <article class="stat-card violet"><span>En attente</span><strong id="statWaiting">0</strong></article>
+          <article class="stat-card success"><span>Traitées</span><strong id="statDone">0</strong></article>
+        </div>
+
+        <div class="panel-grid">
+          <article class="panel">
+            <div class="panel-header"><h2>Répartition par motif</h2></div>
+            <div id="reasonChart" class="bar-chart empty-state">Aucune donnée</div>
+          </article>
+          <article class="panel">
+            <div class="panel-header"><h2>Répartition par équipe</h2></div>
+            <div id="teamChart" class="bar-chart empty-state">Aucune donnée</div>
+          </article>
+        </div>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Demandes les plus récentes</h2>
+            <button class="link-button" data-go="requests">Voir tout</button>
+          </div>
+          <div id="recentRequests" class="table-wrap"></div>
+        </article>
+      </section>
+
+      <section id="view-new" class="view">
+        <div class="two-column">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Coller le message reçu</h2>
+                <p>L’application extrait automatiquement les informations principales.</p>
+              </div>
+            </div>
+            <textarea id="rawMessage" rows="13" placeholder="Exemple :
+
+AMELIO
+Poste en visite
+Fernando MESQUITA
+13071P0069
+PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
+            <div class="actions">
+              <button class="primary" id="analyzeMessage">Analyser le message</button>
+              <button class="secondary" id="clearMessage">Effacer</button>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Fiche générée automatiquement</h2>
+                <p>Tous les champs restent modifiables avant validation.</p>
+              </div>
+            </div>
+
+            <form id="requestForm" class="form-grid">
+              <label>Poste<input id="fieldPoste" required /></label>
+              <label>Commune<input id="fieldCommune" placeholder="À compléter" /></label>
+              <label>Prestation<select id="fieldPrestation"></select></label>
+              <label>Équipe<select id="fieldEquipe"></select></label>
+              <label>Contremaître responsable<select id="fieldCM"></select></label>
+              <label>Motif<select id="fieldMotif"></select></label>
+              <label>Statut<select id="fieldStatus">
+                <option>À traiter</option>
+                <option>En cours</option>
+                <option>En attente</option>
+                <option>Traité</option>
+                <option>Classé sans action</option>
+              </select></label>
+              <label>Date de déclaration<input id="fieldDate" type="datetime-local" /></label>
+              <label class="full">Action du contremaître<textarea id="fieldAction" rows="3"></textarea></label>
+              <label class="full">Message original<textarea id="fieldOriginal" rows="5" readonly></textarea></label>
+              <div class="full actions">
+                <button class="primary" type="submit">Enregistrer la demande</button>
+              </div>
+            </form>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-requests" class="view">
+        <article class="panel">
+          <div class="panel-header wrap">
+            <div>
+              <h2>Demandes</h2>
+              <p>Filtrer, ouvrir et traiter les demandes reçues.</p>
+            </div>
+            <div class="filters">
+              <select id="filterStatus"><option value="">Tous les statuts</option></select>
+              <select id="filterTeam"><option value="">Toutes les équipes</option></select>
+              <input id="filterSearch" placeholder="Poste, commune, technicien…" />
+            </div>
+          </div>
+          <div id="requestsTable" class="table-wrap"></div>
+        </article>
+      </section>
+
+      <section id="view-history" class="view">
+        <article class="panel">
+          <div class="panel-header"><div><h2>Historique</h2><p>Toutes les créations et modifications sont conservées.</p></div></div>
+          <div id="historyList" class="timeline"></div>
+        </article>
+      </section>
+
+      <section id="view-settings" class="view">
+        <div class="settings-grid">
+          <article class="panel">
+            <div class="panel-header"><h2>Contremaîtres</h2></div>
+            <div id="cmSettings"></div>
+            <button class="secondary full-width" id="addCM">+ Ajouter un contremaître</button>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header"><h2>Équipes</h2></div>
+            <div id="teamSettings"></div>
+            <button class="secondary full-width" id="addTeam">+ Ajouter une équipe</button>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header"><h2>Prestations</h2></div>
+            <div id="prestationSettings"></div>
+            <button class="secondary full-width" id="addPrestation">+ Ajouter une prestation</button>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header"><h2>Motifs</h2></div>
+            <div id="reasonSettings"></div>
+            <button class="secondary full-width" id="addReason">+ Ajouter un motif</button>
+          </article>
+        </div>
+
+        <article class="panel notice">
+          <h3>Version de démonstration</h3>
+          <p>Les données sont enregistrées uniquement sur cet appareil. La prochaine étape branchera une base partagée, les comptes utilisateurs et les notifications.</p>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="requestDialog">
+    <form method="dialog" class="dialog-card">
+      <button class="dialog-close" value="cancel">×</button>
+      <div id="dialogContent"></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

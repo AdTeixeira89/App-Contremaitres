@@ -1,0 +1,9 @@
+{
+  "name": "Suivi Contremaîtres",
+  "short_name": "Suivi CM",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#0f172a",
+  "icons": []
+}
