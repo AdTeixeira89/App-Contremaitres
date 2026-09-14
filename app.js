@@ -1,5 +1,12 @@
+import {
+  collection, doc, addDoc, setDoc, updateDoc, onSnapshot,
+  query, orderBy, limit, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
+import { db, functions } from "./firebase-init.js";
+import { currentUser, onAuthReady, login, logout, bootstrapFirstAdmin, lastAuthError } from "./auth.js";
 
-const DEFAULTS = {
+const DEFAULT_SETTINGS = {
   countermasters: [
     { id: crypto.randomUUID(), name: "CM 1", email: "", notifications: true },
     { id: crypto.randomUUID(), name: "CM 2", email: "", notifications: true },
@@ -15,21 +22,13 @@ const DEFAULTS = {
     "Propriété fermée", "Porte de cabine bloquée", "Poste non trouvé",
     "Accès impossible", "Refus du propriétaire", "Végétation",
     "Poste supprimé", "Mauvaise adresse", "Problème de clé", "Autre"
-  ],
-  requests: [],
-  history: []
+  ]
 };
 
-let state = loadState();
+let state = { countermasters: [], teams: [], prestations: [], reasons: [], requests: [], history: [], users: [] };
+let settingsLoaded = false;
+let unsubscribers = [];
 
-function loadState() {
-  const saved = localStorage.getItem("suivi-cm-state");
-  return saved ? JSON.parse(saved) : structuredClone(DEFAULTS);
-}
-function saveState() {
-  localStorage.setItem("suivi-cm-state", JSON.stringify(state));
-  renderAll();
-}
 function toast(message) {
   const el = document.getElementById("toast");
   el.textContent = message; el.classList.add("show");
@@ -46,9 +45,133 @@ function statusClass(status) {
 }
 function fmtDate(value) {
   if (!value) return "—";
-  return new Intl.DateTimeFormat("fr-FR",{dateStyle:"short",timeStyle:"short"}).format(new Date(value));
+  const d = value?.toDate ? value.toDate() : new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("fr-FR",{dateStyle:"short",timeStyle:"short"}).format(d);
 }
-function escapeHtml(s=""){return s.replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));}
+function escapeHtml(s=""){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));}
+
+/* ---------------------------------------------------------------------- */
+/* Connexion / session                                                    */
+/* ---------------------------------------------------------------------- */
+
+const loginScreen = document.getElementById("loginScreen");
+const appShell = document.querySelector(".app-shell");
+
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("loginEmail").value;
+  const password = document.getElementById("loginPassword").value;
+  const btn = document.getElementById("loginSubmit");
+  btn.disabled = true;
+  const ok = await login(email, password);
+  btn.disabled = false;
+  document.getElementById("loginError").textContent = ok ? "" : lastAuthError();
+});
+
+document.getElementById("showBootstrap").addEventListener("click", () => {
+  document.getElementById("loginPanel").hidden = true;
+  document.getElementById("bootstrapPanel").hidden = false;
+});
+document.getElementById("cancelBootstrap").addEventListener("click", () => {
+  document.getElementById("bootstrapPanel").hidden = true;
+  document.getElementById("loginPanel").hidden = false;
+});
+document.getElementById("bootstrapForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = document.getElementById("bootstrapName").value;
+  const email = document.getElementById("bootstrapEmail").value;
+  const password = document.getElementById("bootstrapPassword").value;
+  const btn = document.getElementById("bootstrapSubmit");
+  btn.disabled = true;
+  const ok = await bootstrapFirstAdmin(email, password, name);
+  btn.disabled = false;
+  document.getElementById("bootstrapError").textContent = ok ? "" : lastAuthError();
+});
+
+document.getElementById("logoutBtn").addEventListener("click", () => logout());
+
+onAuthReady((user) => {
+  unsubscribers.forEach(u => u());
+  unsubscribers = [];
+  if (!user) {
+    settingsLoaded = false;
+    loginScreen.style.display = "flex";
+    appShell.style.display = "none";
+    document.getElementById("loginForm").reset();
+    document.getElementById("bootstrapForm").reset();
+    document.getElementById("bootstrapPanel").hidden = true;
+    document.getElementById("loginPanel").hidden = false;
+    const err = lastAuthError();
+    if (err) document.getElementById("loginError").textContent = err;
+    return;
+  }
+  loginScreen.style.display = "none";
+  appShell.style.display = "";
+  document.getElementById("userBarName").textContent = user.name;
+  document.getElementById("userBarRole").textContent = user.role === "admin" ? "Administrateur" : "Contremaître";
+  document.querySelectorAll(".admin-only").forEach(el => el.classList.toggle("hidden", user.role !== "admin"));
+  subscribeData(user);
+});
+
+function subscribeData(user) {
+  unsubscribers.push(onSnapshot(doc(db, "settings", "general"), async (snap) => {
+    if (!snap.exists()) {
+      if (user.role === "admin") {
+        await setDoc(doc(db, "settings", "general"), { ...DEFAULT_SETTINGS, updatedAt: serverTimestamp(), updatedBy: user.uid });
+      }
+      return;
+    }
+    const d = snap.data();
+    state.countermasters = d.countermasters || [];
+    state.teams = d.teams || [];
+    state.prestations = d.prestations || [];
+    state.reasons = d.reasons || [];
+    settingsLoaded = true;
+    renderAll();
+  }, () => toast("Erreur de synchronisation des réglages.")));
+
+  unsubscribers.push(onSnapshot(query(collection(db, "requests"), orderBy("createdAt", "desc")), (snap) => {
+    state.requests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderAll();
+  }, () => toast("Erreur de synchronisation des demandes.")));
+
+  unsubscribers.push(onSnapshot(query(collection(db, "history"), orderBy("date", "desc"), limit(300)), (snap) => {
+    state.history = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderHistory();
+  }, () => toast("Erreur de synchronisation de l'historique.")));
+
+  if (user.role === "admin") {
+    unsubscribers.push(onSnapshot(query(collection(db, "users"), orderBy("createdAt", "asc")), (snap) => {
+      state.users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+      renderUserAccounts();
+    }, () => toast("Erreur de synchronisation des comptes.")));
+  }
+}
+
+async function saveSettings() {
+  await setDoc(doc(db, "settings", "general"), {
+    countermasters: state.countermasters,
+    teams: state.teams,
+    prestations: state.prestations,
+    reasons: state.reasons,
+    updatedAt: serverTimestamp(),
+    updatedBy: currentUser?.uid || null
+  }, { merge: true });
+}
+
+async function logHistory(requestId, text) {
+  await addDoc(collection(db, "history"), {
+    requestId, text,
+    user: currentUser?.name || "Inconnu",
+    userId: currentUser?.uid || null,
+    date: serverTimestamp()
+  });
+}
+
+/* ---------------------------------------------------------------------- */
+/* Navigation                                                              */
+/* ---------------------------------------------------------------------- */
 
 const titles = {
   dashboard:["Tableau de bord","Vue globale des demandes et des traitements"],
@@ -63,6 +186,7 @@ document.querySelectorAll("[data-go]").forEach(btn => btn.addEventListener("clic
 document.getElementById("mobileMenu").addEventListener("click",()=>document.querySelector(".sidebar").classList.toggle("open"));
 
 function switchView(name){
+  if (name === "settings" && currentUser?.role !== "admin") return;
   document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
   document.getElementById(`view-${name}`).classList.add("active");
   document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===name));
@@ -120,31 +244,39 @@ document.getElementById("clearMessage").addEventListener("click",()=>{
   hydrateFormOptions();
 });
 
-document.getElementById("requestForm").addEventListener("submit",e=>{
+document.getElementById("requestForm").addEventListener("submit", async e=>{
   e.preventDefault();
-  const req={
-    id:crypto.randomUUID(),
-    poste:document.getElementById("fieldPoste").value.trim(),
-    commune:document.getElementById("fieldCommune").value.trim(),
-    prestation:document.getElementById("fieldPrestation").value,
-    equipe:document.getElementById("fieldEquipe").value,
-    cm:document.getElementById("fieldCM").value,
-    motif:document.getElementById("fieldMotif").value,
-    status:document.getElementById("fieldStatus").value,
-    date:document.getElementById("fieldDate").value,
-    action:document.getElementById("fieldAction").value.trim(),
-    original:document.getElementById("fieldOriginal").value,
-    treatedBy:"",
-    treatedAt:"",
-    createdAt:new Date().toISOString()
-  };
-  state.requests.unshift(req);
-  state.history.unshift({id:crypto.randomUUID(),requestId:req.id,text:`Demande ${req.poste} créée`,user:"Adao Teixeira",date:new Date().toISOString()});
-  saveState();
-  document.getElementById("rawMessage").value="";
-  document.getElementById("requestForm").reset();
-  toast("Demande enregistrée.");
-  switchView("requests");
+  const btn = e.target.querySelector("button[type=submit]");
+  btn.disabled = true;
+  try {
+    const req={
+      poste:document.getElementById("fieldPoste").value.trim(),
+      commune:document.getElementById("fieldCommune").value.trim(),
+      prestation:document.getElementById("fieldPrestation").value,
+      equipe:document.getElementById("fieldEquipe").value,
+      cm:document.getElementById("fieldCM").value,
+      motif:document.getElementById("fieldMotif").value,
+      status:document.getElementById("fieldStatus").value,
+      date:document.getElementById("fieldDate").value,
+      action:document.getElementById("fieldAction").value.trim(),
+      original:document.getElementById("fieldOriginal").value,
+      treatedBy:"",
+      treatedAt:"",
+      createdAt: serverTimestamp(),
+      createdBy: currentUser?.uid || null,
+      createdByName: currentUser?.name || ""
+    };
+    const ref = await addDoc(collection(db,"requests"), req);
+    await logHistory(ref.id, `Demande ${req.poste} créée`);
+    document.getElementById("rawMessage").value="";
+    document.getElementById("requestForm").reset();
+    toast("Demande enregistrée.");
+    switchView("requests");
+  } catch (err) {
+    toast("Erreur d'enregistrement : " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 function renderDashboard(){
@@ -213,12 +345,20 @@ function openRequest(id){
       <button type="button" class="primary status-action" data-status="Traité">Marquer comme traité</button>
       <button type="button" class="secondary status-action" data-status="Classé sans action">Classer sans action</button>
     </div>`;
-  document.querySelectorAll(".status-action").forEach(btn=>btn.addEventListener("click",()=>{
+  document.querySelectorAll(".status-action").forEach(btn=>btn.addEventListener("click", async ()=>{
     const action=prompt("Action ou commentaire du contremaître :",r.action||"") ?? r.action;
-    const old=r.status; r.status=btn.dataset.status; r.action=action;
-    if(r.status==="Traité"){r.treatedBy="Adao Teixeira";r.treatedAt=new Date().toISOString();}
-    state.history.unshift({id:crypto.randomUUID(),requestId:r.id,text:`${r.poste} : ${old} → ${r.status}`,user:"Adao Teixeira",date:new Date().toISOString()});
-    saveState(); d.close(); toast("Statut mis à jour.");
+    const old=r.status; const newStatus=btn.dataset.status;
+    const patch={status:newStatus, action};
+    if(newStatus==="Traité"){patch.treatedBy=currentUser?.name||"";patch.treatedAt=serverTimestamp();}
+    btn.disabled = true;
+    try {
+      await updateDoc(doc(db,"requests",r.id), patch);
+      await logHistory(r.id, `${r.poste} : ${old} → ${newStatus}`);
+      d.close(); toast("Statut mis à jour.");
+    } catch(err) {
+      toast("Erreur : " + err.message);
+      btn.disabled = false;
+    }
   }));
   d.showModal();
 }
@@ -227,7 +367,12 @@ function renderHistory(){
   el.innerHTML=state.history.length?state.history.map(h=>`<div class="timeline-item"><strong>${escapeHtml(h.text)}</strong><span>${escapeHtml(h.user)} · ${fmtDate(h.date)}</span></div>`).join(""):`<div class="empty-state">Aucun historique</div>`;
 }
 
+/* ---------------------------------------------------------------------- */
+/* Réglages (admin uniquement)                                            */
+/* ---------------------------------------------------------------------- */
+
 function renderSettings(){
+  if (currentUser?.role !== "admin") return;
   document.getElementById("cmSettings").innerHTML=state.countermasters.map((c,i)=>`<div class="setting-row"><input class="cm-name" data-i="${i}" value="${escapeHtml(c.name)}"><button class="danger-button delete-cm" data-i="${i}">×</button></div>`).join("");
   document.getElementById("teamSettings").innerHTML=state.teams.map((t,i)=>`<div class="setting-row team"><input class="team-name" data-i="${i}" value="${escapeHtml(t.name)}"><select class="team-cm" data-i="${i}">${state.countermasters.map(c=>`<option ${c.name===t.cm?"selected":""}>${escapeHtml(c.name)}</option>`).join("")}</select><button class="danger-button delete-team" data-i="${i}">×</button></div>`).join("");
   document.getElementById("prestationSettings").innerHTML=state.prestations.map((p,i)=>`<div class="setting-row"><input class="prestation-name" data-i="${i}" value="${escapeHtml(p)}"><button class="danger-button delete-prestation" data-i="${i}">×</button></div>`).join("");
@@ -235,31 +380,88 @@ function renderSettings(){
   bindSettings();
 }
 function bindSettings(){
-  document.querySelectorAll(".cm-name").forEach(x=>x.addEventListener("change",()=>{const old=state.countermasters[x.dataset.i].name;state.countermasters[x.dataset.i].name=x.value;state.teams.forEach(t=>{if(t.cm===old)t.cm=x.value});saveState()}));
-  document.querySelectorAll(".team-name").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].name=x.value;saveState()}));
-  document.querySelectorAll(".team-cm").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].cm=x.value;saveState()}));
-  document.querySelectorAll(".prestation-name").forEach(x=>x.addEventListener("change",()=>{state.prestations[x.dataset.i]=x.value;saveState()}));
-  document.querySelectorAll(".reason-name").forEach(x=>x.addEventListener("change",()=>{state.reasons[x.dataset.i]=x.value;saveState()}));
-  [[".delete-cm","countermasters"],[".delete-team","teams"],[".delete-prestation","prestations"],[".delete-reason","reasons"]].forEach(([sel,key])=>document.querySelectorAll(sel).forEach(x=>x.addEventListener("click",()=>{state[key].splice(Number(x.dataset.i),1);saveState()})));
+  document.querySelectorAll(".cm-name").forEach(x=>x.addEventListener("change",()=>{const old=state.countermasters[x.dataset.i].name;state.countermasters[x.dataset.i].name=x.value;state.teams.forEach(t=>{if(t.cm===old)t.cm=x.value});saveSettings()}));
+  document.querySelectorAll(".team-name").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].name=x.value;saveSettings()}));
+  document.querySelectorAll(".team-cm").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].cm=x.value;saveSettings()}));
+  document.querySelectorAll(".prestation-name").forEach(x=>x.addEventListener("change",()=>{state.prestations[x.dataset.i]=x.value;saveSettings()}));
+  document.querySelectorAll(".reason-name").forEach(x=>x.addEventListener("change",()=>{state.reasons[x.dataset.i]=x.value;saveSettings()}));
+  [[".delete-cm","countermasters"],[".delete-team","teams"],[".delete-prestation","prestations"],[".delete-reason","reasons"]].forEach(([sel,key])=>document.querySelectorAll(sel).forEach(x=>x.addEventListener("click",()=>{state[key].splice(Number(x.dataset.i),1);saveSettings()})));
 }
-document.getElementById("addCM").addEventListener("click",()=>{state.countermasters.push({id:crypto.randomUUID(),name:"Nouveau contremaître",email:"",notifications:true});saveState()});
-document.getElementById("addTeam").addEventListener("click",()=>{state.teams.push({id:crypto.randomUUID(),name:"Nouvelle équipe",technicians:"",cm:state.countermasters[0]?.name||""});saveState()});
-document.getElementById("addPrestation").addEventListener("click",()=>{state.prestations.push("Nouvelle prestation");saveState()});
-document.getElementById("addReason").addEventListener("click",()=>{state.reasons.push("Nouveau motif");saveState()});
+document.getElementById("addCM").addEventListener("click",()=>{state.countermasters.push({id:crypto.randomUUID(),name:"Nouveau contremaître",email:"",notifications:true});saveSettings()});
+document.getElementById("addTeam").addEventListener("click",()=>{state.teams.push({id:crypto.randomUUID(),name:"Nouvelle équipe",technicians:"",cm:state.countermasters[0]?.name||""});saveSettings()});
+document.getElementById("addPrestation").addEventListener("click",()=>{state.prestations.push("Nouvelle prestation");saveSettings()});
+document.getElementById("addReason").addEventListener("click",()=>{state.reasons.push("Nouveau motif");saveSettings()});
 
-document.getElementById("seedDemo").addEventListener("click",()=>{
-  if(state.requests.length && !confirm("Ajouter quand même les exemples ?")) return;
-  const demo=[
-    {poste:"13071P0069",commune:"",prestation:"AMELIO",equipe:"MESQUITA / FERREIRA",cm:"CM 1",motif:"Porte de cabine bloquée",status:"À traiter",date:"2026-07-20T19:27",action:"",original:"AMELIO\nPoste en visite\nFernando MESQUITA\n13071P0069\nPAS D’ACCES → PORTE DE CABINE BLOQUÉE"},
-    {poste:"04096P0523",commune:"",prestation:"AMELIO",equipe:"PASTOR / ÉQUIPE",cm:"CM 2",motif:"Autre",status:"En cours",date:"2026-07-20T18:10",action:"Vérification des mesures en cours",original:"AMELIO\nPoste non travaillable\nMiguel PASTOR\n04096P0523\nAUTRES...\nRM Avant_T: 5.3"},
-    {poste:"13071P0070",commune:"",prestation:"MESURES",equipe:"MESQUITA / FERREIRA",cm:"CM 1",motif:"Accès impossible",status:"Traité",date:"2026-07-19T16:40",action:"Accès reprogrammé avec l’agence",original:"Poste non travaillable\nFernando MESQUITA\n13071P0070"}
-  ].map(x=>({...x,id:crypto.randomUUID(),treatedBy:x.status==="Traité"?"Adao Teixeira":"",treatedAt:x.status==="Traité"?new Date().toISOString():"",createdAt:new Date().toISOString()}));
-  state.requests.unshift(...demo);
-  demo.forEach(r=>state.history.unshift({id:crypto.randomUUID(),requestId:r.id,text:`Demande ${r.poste} créée`,user:"Adao Teixeira",date:new Date().toISOString()}));
-  saveState();toast("Exemples ajoutés.");
+/* ---------------------------------------------------------------------- */
+/* Comptes utilisateurs (admin uniquement)                                */
+/* ---------------------------------------------------------------------- */
+
+function renderUserAccounts(){
+  if (currentUser?.role !== "admin") return;
+  const el = document.getElementById("userAccounts");
+  if (!state.users.length) { el.innerHTML = `<div class="empty-state">Aucun compte</div>`; return; }
+  el.innerHTML = state.users.map(u => `
+    <div class="setting-row user-row">
+      <div class="user-row-info">
+        <strong>${escapeHtml(u.name)}</strong>
+        <span>${escapeHtml(u.email)}</span>
+      </div>
+      <select class="user-role" data-uid="${u.uid}" ${u.uid===currentUser.uid?"disabled":""}>
+        <option value="contremaitre" ${u.role==="contremaitre"?"selected":""}>Contremaître</option>
+        <option value="admin" ${u.role==="admin"?"selected":""}>Administrateur</option>
+      </select>
+      <button type="button" class="secondary user-toggle-active" data-uid="${u.uid}" data-active="${u.active}" ${u.uid===currentUser.uid?"disabled":""}>${u.active?"Désactiver":"Réactiver"}</button>
+      <button type="button" class="danger-button user-delete" data-uid="${u.uid}" ${u.uid===currentUser.uid?"disabled":""}>×</button>
+    </div>`).join("");
+
+  el.querySelectorAll(".user-role").forEach(sel => sel.addEventListener("change", async () => {
+    sel.disabled = true;
+    try {
+      await httpsCallable(functions,"setUserRole")({ uid: sel.dataset.uid, role: sel.value });
+      toast("Rôle mis à jour.");
+    } catch(err) { toast("Erreur : " + err.message); }
+    sel.disabled = false;
+  }));
+  el.querySelectorAll(".user-toggle-active").forEach(btn => btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    try {
+      await httpsCallable(functions,"setUserActive")({ uid: btn.dataset.uid, active: btn.dataset.active !== "true" });
+      toast("Statut du compte mis à jour.");
+    } catch(err) { toast("Erreur : " + err.message); btn.disabled = false; }
+  }));
+  el.querySelectorAll(".user-delete").forEach(btn => btn.addEventListener("click", async () => {
+    if (!confirm("Supprimer définitivement ce compte ?")) return;
+    btn.disabled = true;
+    try {
+      await httpsCallable(functions,"deleteUserAccount")({ uid: btn.dataset.uid });
+      toast("Compte supprimé.");
+    } catch(err) { toast("Erreur : " + err.message); btn.disabled = false; }
+  }));
+}
+
+document.getElementById("addUserForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const btn = document.getElementById("addUserSubmit");
+  const name = document.getElementById("newUserName").value.trim();
+  const email = document.getElementById("newUserEmail").value.trim();
+  const password = document.getElementById("newUserPassword").value;
+  const role = document.getElementById("newUserRole").value;
+  const errEl = document.getElementById("addUserError");
+  btn.disabled = true; errEl.textContent = "";
+  try {
+    await httpsCallable(functions,"createUserAccount")({ name, email, password, role });
+    e.target.reset();
+    toast("Compte créé.");
+  } catch(err) {
+    errEl.textContent = err.message || "Erreur lors de la création du compte.";
+  }
+  btn.disabled = false;
 });
 
+/* ---------------------------------------------------------------------- */
+
 function renderAll(){
+  if (!settingsLoaded) return;
   hydrateFormOptions();
   renderFilters();
   renderDashboard();
@@ -267,6 +469,5 @@ function renderAll(){
   renderHistory();
   renderSettings();
 }
-renderAll();
 
 if("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");

@@ -1,0 +1,27 @@
+name: Déploiement Firebase
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Installer les dépendances des Cloud Functions
+        run: npm install --prefix functions
+
+      - name: Authentification Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Déployer sur Firebase (Hosting + Firestore + Functions)
+        run: npx firebase-tools deploy --non-interactive --project app-cm-ff5a4

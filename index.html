@@ -12,7 +12,36 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-shell">
+  <div class="login-overlay" id="loginScreen">
+    <div class="login-card">
+      <div class="login-title">🔐 Suivi CM</div>
+
+      <div id="loginPanel">
+        <p class="login-sub">Connectez-vous pour accéder à l'application.</p>
+        <form id="loginForm">
+          <label class="field">Email<input id="loginEmail" type="email" autocomplete="username" required /></label>
+          <label class="field">Mot de passe<input id="loginPassword" type="password" autocomplete="current-password" required /></label>
+          <div id="loginError" class="error-msg"></div>
+          <button class="primary full-width" type="submit" id="loginSubmit">Se connecter</button>
+        </form>
+        <button class="link-button" id="showBootstrap" type="button">Premier démarrage : créer le compte administrateur</button>
+      </div>
+
+      <div id="bootstrapPanel" hidden>
+        <p class="login-sub">Cette action ne fonctionne qu'une seule fois, tant qu'aucun administrateur n'existe encore.</p>
+        <form id="bootstrapForm">
+          <label class="field">Nom affiché<input id="bootstrapName" required /></label>
+          <label class="field">Email<input id="bootstrapEmail" type="email" autocomplete="username" required /></label>
+          <label class="field">Mot de passe<input id="bootstrapPassword" type="password" autocomplete="new-password" minlength="6" required /></label>
+          <div id="bootstrapError" class="error-msg"></div>
+          <button class="primary full-width" type="submit" id="bootstrapSubmit">Créer le compte administrateur</button>
+        </form>
+        <button class="link-button" id="cancelBootstrap" type="button">Retour à la connexion</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-shell" style="display:none">
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">CM</div>
@@ -27,17 +56,18 @@
         <button class="nav-item" data-view="new">Nouveau message</button>
         <button class="nav-item" data-view="requests">Demandes à traiter</button>
         <button class="nav-item" data-view="history">Historique</button>
-        <button class="nav-item" data-view="settings">Réglages</button>
+        <button class="nav-item admin-only hidden" data-view="settings">Réglages</button>
       </nav>
 
       <div class="sidebar-footer">
         <div class="user-chip">
-          <div class="avatar">AT</div>
+          <div class="avatar">👤</div>
           <div>
-            <strong>Adao Teixeira</strong>
-            <span>Administrateur</span>
+            <strong id="userBarName">—</strong>
+            <span id="userBarRole">—</span>
           </div>
         </div>
+        <button class="secondary full-width" id="logoutBtn">Se déconnecter</button>
       </div>
     </aside>
 
@@ -59,7 +89,6 @@
             <option value="week">Cette semaine</option>
             <option value="month">Ce mois</option>
           </select>
-          <button class="secondary" id="seedDemo">Charger des exemples</button>
         </div>
 
         <div class="stats-grid">
@@ -171,6 +200,24 @@ PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
       <section id="view-settings" class="view">
         <div class="settings-grid">
           <article class="panel">
+            <div class="panel-header"><h2>Comptes utilisateurs</h2></div>
+            <div id="userAccounts"></div>
+            <form id="addUserForm" class="form-grid" style="margin-top:14px">
+              <label>Nom affiché<input id="newUserName" required /></label>
+              <label>Email<input id="newUserEmail" type="email" required /></label>
+              <label>Mot de passe<input id="newUserPassword" type="password" minlength="6" required /></label>
+              <label>Rôle<select id="newUserRole">
+                <option value="contremaitre">Contremaître</option>
+                <option value="admin">Administrateur</option>
+              </select></label>
+              <div id="addUserError" class="error-msg full"></div>
+              <div class="full actions">
+                <button class="primary" type="submit" id="addUserSubmit">+ Créer le compte</button>
+              </div>
+            </form>
+          </article>
+
+          <article class="panel">
             <div class="panel-header"><h2>Contremaîtres</h2></div>
             <div id="cmSettings"></div>
             <button class="secondary full-width" id="addCM">+ Ajouter un contremaître</button>
@@ -196,8 +243,8 @@ PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
         </div>
 
         <article class="panel notice">
-          <h3>Version de démonstration</h3>
-          <p>Les données sont enregistrées uniquement sur cet appareil. La prochaine étape branchera une base partagée, les comptes utilisateurs et les notifications.</p>
+          <h3>Base de données partagée</h3>
+          <p>Les données sont désormais centralisées et synchronisées en temps réel entre tous les contremaîtres connectés. Prochaines étapes : photos jointes, statistiques filtrables et réception automatique des SMS.</p>
         </article>
       </section>
     </main>
@@ -211,6 +258,6 @@ PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
   </dialog>
 
   <div id="toast" class="toast"></div>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

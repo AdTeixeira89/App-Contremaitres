@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Réservé à la phase suivante (photos jointes aux actions/commentaires).
+// Pour l'instant, aucun accès n'est ouvert : personne ne peut lire ni écrire
+// tant que les règles ne seront pas complétées avec la logique de rôle.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
