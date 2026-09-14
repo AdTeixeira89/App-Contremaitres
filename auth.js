@@ -1,5 +1,5 @@
 import {
-  onAuthStateChanged, signInWithEmailAndPassword, signOut
+  onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
@@ -37,6 +37,21 @@ export async function login(email, password) {
 
 export function logout() {
   return signOut(auth);
+}
+
+export async function resetPassword(email) {
+  authErrorMessage = "";
+  try {
+    await sendPasswordResetEmail(auth, email.trim());
+    return true;
+  } catch (err) {
+    authErrorMessage = {
+      "auth/invalid-email": "Adresse email invalide.",
+      "auth/user-not-found": "Aucun compte n'est associé à cet email.",
+      "auth/too-many-requests": "Trop de tentatives, réessayez dans quelques minutes."
+    }[err.code] || "Impossible d'envoyer l'email de réinitialisation.";
+    return false;
+  }
 }
 
 export async function bootstrapFirstAdmin(email, password, name) {

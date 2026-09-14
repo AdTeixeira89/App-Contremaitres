@@ -4,7 +4,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
 import { db, functions } from "./firebase-init.js";
-import { currentUser, onAuthReady, login, logout, bootstrapFirstAdmin, lastAuthError } from "./auth.js";
+import { currentUser, onAuthReady, login, logout, bootstrapFirstAdmin, resetPassword, lastAuthError } from "./auth.js";
 
 const DEFAULT_SETTINGS = {
   countermasters: [
@@ -89,6 +89,28 @@ document.getElementById("bootstrapForm").addEventListener("submit", async (e) =>
   document.getElementById("bootstrapError").textContent = ok ? "" : lastAuthError();
 });
 
+document.getElementById("showReset").addEventListener("click", () => {
+  document.getElementById("loginPanel").hidden = true;
+  document.getElementById("resetPanel").hidden = false;
+});
+document.getElementById("cancelReset").addEventListener("click", () => {
+  document.getElementById("resetPanel").hidden = true;
+  document.getElementById("loginPanel").hidden = false;
+  document.getElementById("resetForm").reset();
+  document.getElementById("resetError").textContent = "";
+  document.getElementById("resetSuccess").textContent = "";
+});
+document.getElementById("resetForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("resetEmail").value;
+  const btn = document.getElementById("resetSubmit");
+  btn.disabled = true;
+  const ok = await resetPassword(email);
+  btn.disabled = false;
+  document.getElementById("resetError").textContent = ok ? "" : lastAuthError();
+  document.getElementById("resetSuccess").textContent = ok ? "Email envoyé. Vérifiez votre boîte de réception (et vos indésirables)." : "";
+});
+
 document.getElementById("logoutBtn").addEventListener("click", () => logout());
 
 onAuthReady((user) => {
@@ -100,7 +122,10 @@ onAuthReady((user) => {
     appShell.style.display = "none";
     document.getElementById("loginForm").reset();
     document.getElementById("bootstrapForm").reset();
+    document.getElementById("resetForm").reset();
     document.getElementById("bootstrapPanel").hidden = true;
+    document.getElementById("resetPanel").hidden = true;
+    document.getElementById("resetSuccess").textContent = "";
     document.getElementById("loginPanel").hidden = false;
     const err = lastAuthError();
     if (err) document.getElementById("loginError").textContent = err;

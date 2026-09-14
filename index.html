@@ -24,6 +24,7 @@
           <div id="loginError" class="error-msg"></div>
           <button class="primary full-width" type="submit" id="loginSubmit">Se connecter</button>
         </form>
+        <button class="link-button" id="showReset" type="button">Mot de passe oublié ?</button>
         <button class="link-button" id="showBootstrap" type="button">Premier démarrage : créer le compte administrateur</button>
       </div>
 
@@ -37,6 +38,17 @@
           <button class="primary full-width" type="submit" id="bootstrapSubmit">Créer le compte administrateur</button>
         </form>
         <button class="link-button" id="cancelBootstrap" type="button">Retour à la connexion</button>
+      </div>
+
+      <div id="resetPanel" hidden>
+        <p class="login-sub">Recevez un lien par email pour choisir un nouveau mot de passe.</p>
+        <form id="resetForm">
+          <label class="field">Email<input id="resetEmail" type="email" autocomplete="username" required /></label>
+          <div id="resetError" class="error-msg"></div>
+          <div id="resetSuccess" class="success-msg"></div>
+          <button class="primary full-width" type="submit" id="resetSubmit">Envoyer le lien</button>
+        </form>
+        <button class="link-button" id="cancelReset" type="button">Retour à la connexion</button>
       </div>
     </div>
   </div>
