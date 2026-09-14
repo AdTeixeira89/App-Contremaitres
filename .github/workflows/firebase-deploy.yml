@@ -1,0 +1,24 @@
+name: Déploiement Firebase
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Installer les dépendances des Cloud Functions
+        run: npm install --prefix functions
+
+      - name: Déployer sur Firebase (Hosting + Firestore + Functions)
+        run: npx firebase-tools deploy --non-interactive --token "$FIREBASE_TOKEN"
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
