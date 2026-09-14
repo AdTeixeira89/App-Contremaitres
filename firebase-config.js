@@ -9,12 +9,12 @@
      les Cloud Functions, pas par ce fichier).
 */
 export const firebaseConfig = {
-  apiKey: "REPLACE_ME",
-  authDomain: "REPLACE_ME.firebaseapp.com",
-  projectId: "REPLACE_ME",
-  storageBucket: "REPLACE_ME.appspot.com",
-  messagingSenderId: "REPLACE_ME",
-  appId: "REPLACE_ME"
+  apiKey: "AIzaSyDODhl5m2ncZHHODOFanIFWS86vYlq1vdU",
+  authDomain: "app-cm-ff5a4.firebaseapp.com",
+  projectId: "app-cm-ff5a4",
+  storageBucket: "app-cm-ff5a4.firebasestorage.app",
+  messagingSenderId: "603145790876",
+  appId: "1:603145790876:web:abd2924d94d8eebdd4d459"
 };
 
 // Région utilisée pour les Cloud Functions (doit correspondre à functions/index.js).
