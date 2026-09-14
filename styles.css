@@ -34,6 +34,8 @@ dialog{border:0;border-radius:18px;padding:0;box-shadow:0 25px 70px rgba(0,0,0,.
 .login-sub{font-size:13px;color:var(--muted);text-align:center;margin:0 0 18px}
 .field{display:grid;gap:6px;font-size:13px;font-weight:700;margin-bottom:12px}
 .error-msg{color:var(--danger);font-size:13px;font-weight:700;min-height:18px;margin:2px 0 10px}
+.success-msg{color:var(--success);font-size:13px;font-weight:700;margin:2px 0 10px}
+.success-msg:empty{display:none}
 #showBootstrap,#cancelBootstrap{display:block;margin:14px auto 0;text-align:center}
 .user-row{grid-template-columns:1fr auto auto auto;align-items:center}
 .user-row-info{display:grid;gap:2px}.user-row-info span{font-size:12px;color:var(--muted)}
