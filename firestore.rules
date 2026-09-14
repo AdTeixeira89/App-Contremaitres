@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function myDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function isActiveUser() {
+      return isSignedIn() && myDoc().data.active == true;
+    }
+    function isAdmin() {
+      return isActiveUser() && myDoc().data.role == 'admin';
+    }
+
+    // Comptes utilisateurs : chacun peut lire sa propre fiche (pour connaître son rôle),
+    // l'administrateur peut tous les lire. Toute écriture passe obligatoirement par les
+    // Cloud Functions (Admin SDK), jamais directement depuis le client.
+    match /users/{uid} {
+      allow get: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow write: if false;
+    }
+
+    // Demandes (fiches) : lisibles et modifiables par tout compte actif.
+    // La suppression reste réservée à l'administrateur.
+    match /requests/{requestId} {
+      allow read: if isActiveUser();
+      allow create, update: if isActiveUser();
+      allow delete: if isAdmin();
+    }
+
+    // Historique : append-only, jamais modifié ni supprimé une fois écrit.
+    match /history/{entryId} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser();
+      allow update, delete: if false;
+    }
+
+    // Réglages (contremaîtres, équipes, prestations, motifs, correspondance GDO...) :
+    // lecture par tout compte actif, écriture réservée à l'administrateur.
+    match /settings/{docId} {
+      allow read: if isActiveUser();
+      allow write: if isAdmin();
+    }
+  }
+}
