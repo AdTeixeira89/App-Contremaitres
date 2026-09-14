@@ -24,4 +24,4 @@ jobs:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
       - name: Déployer sur Firebase (Hosting + Firestore + Functions)
-        run: npx firebase-tools deploy --non-interactive --project app-cm-ff5a4
+        run: npx firebase-tools deploy --non-interactive --force --project app-cm-ff5a4
