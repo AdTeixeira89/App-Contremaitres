@@ -12,6 +12,11 @@ setGlobalOptions({ region: "europe-west1", maxInstances: 10 });
 
 const VALID_ROLES = ["admin", "contremaitre"];
 
+// Seul ce compte peut supprimer un autre compte administrateur. Codé en dur
+// (pas dans un réglage modifiable par l'application) pour qu'aucun admin ne
+// puisse s'attribuer ce statut lui-même.
+const SUPER_ADMIN_EMAIL = "adam.teixeira89@gmail.com";
+
 async function assertAdmin(auth) {
   if (!auth) throw new HttpsError("unauthenticated", "Connexion requise.");
   const snap = await db.collection("users").doc(auth.uid).get();
@@ -107,12 +112,17 @@ exports.setUserActive = onCall(async (request) => {
 });
 
 // Suppression définitive d'un compte, réservée à l'administrateur.
+// Supprimer un autre compte administrateur est réservé au super admin.
 exports.deleteUserAccount = onCall(async (request) => {
   await assertAdmin(request.auth);
   const { uid } = request.data || {};
   if (!uid) throw new HttpsError("invalid-argument", "Identifiant requis.");
   if (uid === request.auth.uid) {
     throw new HttpsError("failed-precondition", "Vous ne pouvez pas supprimer votre propre compte.");
+  }
+  const targetSnap = await db.collection("users").doc(uid).get();
+  if (targetSnap.exists && targetSnap.data().role === "admin" && request.auth.token.email !== SUPER_ADMIN_EMAIL) {
+    throw new HttpsError("permission-denied", "Seul le compte administrateur principal peut supprimer un autre administrateur.");
   }
   await admin.auth().deleteUser(uid).catch(() => {});
   await db.collection("users").doc(uid).delete();
