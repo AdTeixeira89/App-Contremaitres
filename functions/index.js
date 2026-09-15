@@ -124,7 +124,7 @@ exports.deleteUserAccount = onCall(async (request) => {
 /* ------------------------------------------------------------------------ */
 
 function normalize(s = "") {
-  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 }
 
 // Même logique que l'analyse manuelle côté client (app.js: analyzeMessage),
@@ -149,6 +149,31 @@ function parseSms(raw, settings) {
     else motif = "Autre";
   }
   return { poste, prestation, motif, team };
+}
+
+// Analyse d'un SMS de rendement : chantier, CDT, tâches chiffrées et score
+// pondéré par les points définis dans settings/rendement.
+function parseRendement(raw, rendementSettings, generalSettings) {
+  const n = normalize(raw);
+  const chantierMatch = raw.match(/CHANTIER\s*:\s*(\S+)/i);
+  const chantier = chantierMatch ? chantierMatch[1].trim() : "";
+  const cdtMatch = raw.match(/CDT\s*:\s*([^\n\r]+)/i);
+  const cdt = cdtMatch ? cdtMatch[1].trim() : "";
+  const cdtNorm = normalize(cdt);
+  const team = (generalSettings.teams || []).find(t => {
+    const names = (t.technicians || "").split(",").map(x => normalize(x.trim()));
+    return names.some(name => name && cdtNorm.includes(name.split(" ")[0])) || cdtNorm.includes(normalize(t.name));
+  });
+  const tasks = rendementSettings.tasks || [];
+  const values = {};
+  tasks.forEach(task => {
+    const labelNorm = normalize(task.label).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(labelNorm + "\\s*:\\s*(\\d+(?:[.,]\\d+)?)", "i");
+    const m = n.match(re);
+    values[task.id] = m ? parseFloat(m[1].replace(",", ".")) : 0;
+  });
+  const score = tasks.reduce((sum, t) => sum + (values[t.id] || 0) * (Number(t.points) || 0), 0);
+  return { chantier, cdt, team, values, score };
 }
 
 async function notifyCountermaster(cmName, settings, requestSummary) {
@@ -193,8 +218,11 @@ exports.receiveSms = onRequest(async (req, res) => {
     }
     const from = (typeof body === "object" && body?.from) || null;
 
+    const isRendement = normalize(raw).includes("RENDEMENT");
+    const targetCollection = isRendement ? "yieldAlerts" : "requests";
+
     const smsHash = crypto.createHash("sha256").update(raw).digest("hex");
-    const dupSnap = await db.collection("requests").where("smsHash", "==", smsHash).limit(1).get();
+    const dupSnap = await db.collection(targetCollection).where("smsHash", "==", smsHash).limit(1).get();
     if (!dupSnap.empty) {
       res.status(200).json({ ok: true, duplicate: true });
       return;
@@ -206,6 +234,49 @@ exports.receiveSms = onRequest(async (req, res) => {
       return;
     }
     const settings = settingsSnap.data();
+
+    if (isRendement) {
+      const rendementSnap = await db.collection("settings").doc("rendement").get();
+      const rendementSettings = rendementSnap.exists ? rendementSnap.data() : { tasks: [], threshold: 0 };
+      const { chantier, cdt, team, values, score } = parseRendement(raw, rendementSettings, settings);
+      const threshold = typeof rendementSettings.threshold === "number" ? rendementSettings.threshold : 0;
+      const belowThreshold = score < threshold;
+
+      const alertData = {
+        chantier, cdt, equipe: team?.name || "", cm: team?.cm || "",
+        tasks: values, score, threshold, belowThreshold,
+        status: "À traiter", date: new Date().toISOString(),
+        action: "", original: raw, treatedBy: "", treatedAt: "",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdBy: null, createdByName: "SMS automatique",
+        smsHash, smsFrom: from
+      };
+      const ref = await db.collection("yieldAlerts").add(alertData);
+      await db.collection("history").add({
+        kind: "yield", yieldAlertId: ref.id,
+        text: team
+          ? `Rendement ${chantier || "—"}/${cdt || "—"} créé automatiquement par SMS, attribué à ${team.cm}`
+          : `Rendement ${chantier || "—"}/${cdt || "—"} créé automatiquement par SMS, non attribué (CDT non reconnu)`,
+        user: "Système (SMS)", userId: null,
+        date: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      let notifyResult = { notified: false };
+      if (belowThreshold && team?.cm) {
+        try {
+          notifyResult = await notifyCountermaster(
+            team.cm, settings,
+            `Rendement en alerte — chantier ${chantier || "?"}, CDT ${cdt || "?"} (score ${score}/${threshold})`
+          );
+        } catch (err) {
+          logger.error("Échec d'envoi de la notification push (rendement)", err);
+        }
+      }
+
+      res.status(200).json({ ok: true, yieldAlertId: ref.id, attributed: !!team, belowThreshold, notified: notifyResult.notified });
+      return;
+    }
+
     const { poste, prestation, motif, team } = parseSms(raw, settings);
 
     const requestData = {

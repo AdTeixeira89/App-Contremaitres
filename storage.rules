@@ -11,9 +11,16 @@ service firebase.storage {
         firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.active == true;
     }
 
-    // Photos jointes aux actions/commentaires des demandes : tout compte actif
-    // peut en ajouter et les consulter. Limité aux images, 10 Mo max.
+    // Photos jointes aux actions/commentaires des demandes (rejets) et des
+    // alertes rendement : tout compte actif peut en ajouter et les consulter.
+    // Limité aux images, 10 Mo max.
     match /requests/{requestId}/{allPaths=**} {
+      allow read: if isActiveUser();
+      allow write: if isActiveUser()
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+    match /yieldAlerts/{alertId}/{allPaths=**} {
       allow read: if isActiveUser();
       allow write: if isActiveUser()
         && request.resource.size < 10 * 1024 * 1024

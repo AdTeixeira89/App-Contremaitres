@@ -69,6 +69,11 @@
         <button class="nav-item" data-view="requests">Demandes à traiter</button>
         <button class="nav-item" data-view="history">Historique</button>
         <button class="nav-item" data-view="stats">Statistiques</button>
+        <div class="nav-section">Rendement</div>
+        <button class="nav-item" data-view="rendement-new">Nouveau rendement</button>
+        <button class="nav-item" data-view="rendement-list">Alertes rendement</button>
+        <button class="nav-item" data-view="rendement-history">Historique rendement</button>
+        <button class="nav-item" data-view="rendement-stats">Statistiques rendement</button>
         <button class="nav-item" data-view="settings">Réglages</button>
       </nav>
 
@@ -246,6 +251,117 @@ PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
         </article>
       </section>
 
+      <section id="view-rendement-new" class="view">
+        <div class="two-column">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Coller le SMS de rendement</h2>
+                <p>L'application extrait automatiquement le chantier, le CDT et les tâches reconnues.</p>
+              </div>
+            </div>
+            <textarea id="rendementRawMessage" rows="16" placeholder="RENDEMENT
+
+CHANTIER: 13
+CDT: MESQUITA
+
+Postes travaillés :
+..."></textarea>
+            <div class="actions">
+              <button class="primary" id="analyzeRendement">Analyser le message</button>
+              <button class="secondary" id="clearRendement">Effacer</button>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Fiche générée automatiquement</h2>
+                <p>Tous les champs restent modifiables avant validation.</p>
+              </div>
+            </div>
+            <form id="rendementForm" class="form-grid">
+              <label>Chantier<input id="rendementChantier" required /></label>
+              <label>CDT<input id="rendementCdt" required /></label>
+              <label>Équipe<select id="rendementEquipe"></select></label>
+              <label>Contremaître responsable<select id="rendementCM"></select></label>
+              <label>Statut<select id="rendementStatus">
+                <option>À traiter</option>
+                <option>En cours</option>
+                <option>En attente</option>
+                <option>Traité</option>
+                <option>Classé sans action</option>
+              </select></label>
+              <label>Date<input id="rendementDate" type="datetime-local" /></label>
+              <div class="full form-grid" id="rendementTaskFields"></div>
+              <div class="detail-box full"><span>Score calculé</span><strong id="rendementScorePreview">—</strong></div>
+              <label class="full">Action du contremaître<textarea id="rendementAction" rows="3"></textarea></label>
+              <label class="full">Message original<textarea id="rendementOriginal" rows="5" readonly></textarea></label>
+              <div class="full actions">
+                <button class="primary" type="submit">Enregistrer le rendement</button>
+              </div>
+            </form>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-rendement-list" class="view">
+        <article class="panel">
+          <div class="panel-header wrap">
+            <div>
+              <h2>Alertes rendement</h2>
+              <p>Filtrer, ouvrir et traiter les rendements reçus.</p>
+            </div>
+            <div class="filters">
+              <select id="rendementFilterStatus"><option value="">Tous les statuts</option></select>
+              <select id="rendementFilterTeam"><option value="">Toutes les équipes</option></select>
+              <input id="rendementFilterSearch" placeholder="Chantier, CDT…" />
+            </div>
+          </div>
+          <div id="rendementTable" class="table-wrap"></div>
+        </article>
+      </section>
+
+      <section id="view-rendement-history" class="view">
+        <article class="panel">
+          <div class="panel-header"><div><h2>Historique rendement</h2><p>Toutes les créations et modifications sont conservées.</p></div></div>
+          <div id="rendementHistoryList" class="timeline"></div>
+        </article>
+      </section>
+
+      <section id="view-rendement-stats" class="view">
+        <article class="panel">
+          <div class="panel-header wrap">
+            <div>
+              <h2>Statistiques rendement</h2>
+              <p>Suivre les alertes par CDT et par chantier.</p>
+            </div>
+            <div class="filters">
+              <label class="inline-label">Du <input type="date" id="rendementStatsFrom" /></label>
+              <label class="inline-label">Au <input type="date" id="rendementStatsTo" /></label>
+              <select id="rendementStatsCdt"><option value="">Tous les CDT</option></select>
+              <select id="rendementStatsChantier"><option value="">Tous les chantiers</option></select>
+              <button class="secondary" id="rendementStatsReset" type="button">Réinitialiser</button>
+            </div>
+          </div>
+          <p class="small-note" id="rendementStatsCount"></p>
+        </article>
+        <div class="panel-grid">
+          <article class="panel">
+            <div class="panel-header"><h2>Rendements par CDT</h2></div>
+            <div id="rendementStatsCdtChart" class="bar-chart empty-state">Aucune donnée</div>
+          </article>
+          <article class="panel">
+            <div class="panel-header"><h2>Rendements par chantier</h2></div>
+            <div id="rendementStatsChantierChart" class="bar-chart empty-state">Aucune donnée</div>
+          </article>
+        </div>
+        <article class="panel">
+          <div class="panel-header"><h2>Alertes (en dessous du seuil) par CDT</h2></div>
+          <div id="rendementStatsAlertChart" class="bar-chart empty-state">Aucune donnée</div>
+        </article>
+      </section>
+
       <section id="view-settings" class="view">
         <div class="settings-grid">
           <article class="panel admin-only hidden">
@@ -288,6 +404,14 @@ PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
             <div class="panel-header"><h2>Motifs</h2></div>
             <div id="reasonSettings"></div>
             <button class="secondary full-width" id="addReason">+ Ajouter un motif</button>
+          </article>
+
+          <article class="panel admin-only hidden">
+            <div class="panel-header"><h2>Barème rendement</h2></div>
+            <p class="small-note">Points attribués à chaque tâche, et seuil en dessous duquel une alerte est déclenchée.</p>
+            <div id="rendementTaskSettings"></div>
+            <button class="secondary full-width" id="addRendementTask">+ Ajouter une tâche</button>
+            <label class="field" style="margin-top:14px">Seuil d'alerte<input id="rendementThreshold" type="number" step="any" /></label>
           </article>
 
           <article class="panel">

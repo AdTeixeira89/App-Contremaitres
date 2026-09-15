@@ -38,6 +38,14 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Alertes rendement : même principe que les demandes (rejets), mais dans
+    // une collection séparée pour ne jamais mélanger les deux domaines.
+    match /yieldAlerts/{alertId} {
+      allow read: if isActiveUser();
+      allow create, update: if isActiveUser();
+      allow delete: if isAdmin();
+    }
+
     // Historique : append-only, jamais modifié ni supprimé une fois écrit.
     match /history/{entryId} {
       allow read: if isActiveUser();
