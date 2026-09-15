@@ -19,3 +19,12 @@ export const firebaseConfig = {
 
 // Région utilisée pour les Cloud Functions (doit correspondre à functions/index.js).
 export const FUNCTIONS_REGION = "europe-west1";
+
+/*
+  Clé VAPID pour les notifications push (Web Push).
+  À récupérer dans la console Firebase : Paramètres du projet > Cloud Messaging >
+  onglet "Web configuration" > "Generate key pair" (si aucune clé n'existe encore).
+  Tant que ce n'est pas rempli, les notifications restent désactivées sans bloquer
+  le reste de l'application.
+*/
+export const VAPID_KEY = "REPLACE_ME";

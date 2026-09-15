@@ -16,6 +16,13 @@ et base de données partagée (Firebase).
   son propre compte email/mot de passe.
 - **Données centralisées en temps réel** (Firestore) : plusieurs contremaîtres peuvent
   travailler simultanément, chacun voit les mises à jour des autres instantanément.
+- **Photos jointes** aux actions/commentaires (prise de photo ou sélection depuis la
+  galerie), conservées définitivement avec l'historique de la demande concernée.
+- **Statistiques** des rejets par équipe, par zone (2 premiers chiffres du code GDO) et
+  par motif, avec filtres combinables (période, équipe, zone, motif).
+- **Réception automatique des SMS** : un téléphone dédié transfère chaque SMS reçu vers
+  l'application, qui reconnaît le technicien concerné (même logique que l'analyse
+  manuelle), crée la fiche automatiquement et notifie le bon contremaître.
 - Installation possible comme application web sur téléphone (PWA).
 
 ## Architecture
@@ -26,16 +33,17 @@ et base de données partagée (Firebase).
   - **Authentication** : comptes email/mot de passe.
   - **Firestore** : base de données (`users`, `requests`, `history`, `settings`).
   - **Cloud Functions** (`functions/`) : gestion des comptes (création, rôle,
-    activation/désactivation, suppression), exécutée côté serveur pour que ces
-    opérations ne puissent jamais être faites depuis le navigateur.
+    activation/désactivation, suppression) ; `receiveSms` reçoit les SMS transférés par
+    le téléphone dédié, reconnaît le technicien/l'équipe, crée la fiche et notifie le
+    contremaître concerné.
   - **Firestore Security Rules** (`firestore.rules`) : appliquent les droits selon le
     rôle (`admin` / `contremaitre`) directement côté serveur.
+  - **Firebase Storage** (`storage.rules`) : stockage des photos jointes aux actions,
+    limité aux images de moins de 10 Mo.
+  - **Firebase Cloud Messaging** : notifications push envoyées au contremaître concerné
+    quand une demande lui est attribuée automatiquement par SMS.
 - **Hébergement** : Firebase Hosting (ou tout hébergeur statique, puisque le frontend
   reste un site statique qui appelle l'API Firebase).
-
-Prochaines étapes prévues : photos jointes aux actions/commentaires (Firebase
-Storage), statistiques filtrables multi-critères, réception automatique des SMS via un
-téléphone relais et routage automatique par préfixe de code GDO.
 
 ## Mise en place (une seule fois)
 
@@ -64,7 +72,37 @@ téléphone relais et routage automatique par préfixe de code GDO.
    compte. Cette action ne fonctionne qu'une seule fois : dès qu'un administrateur
    existe, elle se désactive automatiquement.
 10. Se connecter avec ce compte administrateur, puis créer un compte pour chaque
-    contremaître depuis **Réglages > Comptes utilisateurs**.
+    contremaître depuis **Réglages > Comptes utilisateurs**, et renseigner l'email de
+    chacun sur sa fiche dans le panneau **Contremaîtres** (doit correspondre à l'email
+    de son compte, sert à savoir où envoyer les notifications).
+
+## Activer les notifications push (une seule fois)
+
+1. Dans la console Firebase : **Paramètres du projet > Cloud Messaging** > onglet
+   **Web configuration** > **« Generate key pair »** (si aucune clé n'existe déjà).
+2. Copier la clé affichée dans `firebase-config.js`, à la place de `REPLACE_ME` pour
+   `VAPID_KEY`.
+3. Redéployer (`firebase deploy` ou push sur `main`).
+4. Chaque contremaître clique ensuite sur **« Activer les notifications »** depuis
+   Réglages, sur chacun de ses appareils.
+
+## Configurer la réception automatique des SMS
+
+1. Se connecter en tant qu'administrateur, aller dans **Réglages > SMS automatique**,
+   cliquer sur **« Régénérer la clé »** pour générer la première clé secrète, puis noter
+   l'URL du webhook et la clé affichées.
+2. Sur le téléphone Android dédié qui recevra tous les SMS professionnels, installer une
+   application capable de transférer chaque SMS reçu vers une adresse web (« webhook »)
+   en HTTP POST. Deux options :
+   - **Tasker** (payant, ~3,50 €, le plus fiable et documenté) : créer un profil
+     déclenché par « Received Text », avec une action « HTTP Request » (POST) vers
+     l'URL du webhook, en-tête `X-Webhook-Secret` avec la clé, corps JSON
+     `{"text": "%SMSRB", "from": "%SMSRF"}`.
+   - Une application gratuite de transfert de SMS vers webhook (chercher « SMS forwarder
+     webhook » sur le Play Store) — vérifier qu'elle permet de définir un en-tête HTTP
+     personnalisé pour la clé secrète.
+3. Envoyer un SMS de test contenant un nom de technicien connu et un code GDO, vérifier
+   qu'une fiche apparaît automatiquement dans **Demandes à traiter**.
 
 ## Développement local
 
