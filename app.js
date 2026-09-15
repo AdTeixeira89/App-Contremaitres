@@ -3,7 +3,12 @@ import {
   query, orderBy, limit, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
-import { db, functions } from "./firebase-init.js";
+import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
+import {
+  getMessaging, isSupported as messagingIsSupported, getToken
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging.js";
+import { db, functions, storage, firebaseApp } from "./firebase-init.js";
+import { VAPID_KEY, firebaseConfig, FUNCTIONS_REGION } from "./firebase-config.js";
 import { currentUser, onAuthReady, login, logout, bootstrapFirstAdmin, resetPassword, lastAuthError } from "./auth.js";
 
 const DEFAULT_SETTINGS = {
@@ -25,7 +30,7 @@ const DEFAULT_SETTINGS = {
   ]
 };
 
-let state = { countermasters: [], teams: [], prestations: [], reasons: [], requests: [], history: [], users: [] };
+let state = { countermasters: [], teams: [], prestations: [], reasons: [], requests: [], history: [], users: [], sms: null };
 let settingsLoaded = false;
 let unsubscribers = [];
 
@@ -136,6 +141,7 @@ onAuthReady((user) => {
   document.getElementById("userBarName").textContent = user.name;
   document.getElementById("userBarRole").textContent = user.role === "admin" ? "Administrateur" : "Contremaître";
   document.querySelectorAll(".admin-only").forEach(el => el.classList.toggle("hidden", user.role !== "admin"));
+  refreshNotificationStatus();
   subscribeData(user);
 });
 
@@ -171,6 +177,11 @@ function subscribeData(user) {
       state.users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
       renderUserAccounts();
     }, () => toast("Erreur de synchronisation des comptes.")));
+
+    unsubscribers.push(onSnapshot(doc(db, "settings", "sms"), (snap) => {
+      state.sms = snap.exists() ? snap.data() : null;
+      renderSmsSettings();
+    }, () => toast("Erreur de synchronisation des réglages SMS.")));
   }
 }
 
@@ -203,6 +214,7 @@ const titles = {
   new:["Nouveau message","Coller et analyser un SMS reçu"],
   requests:["Demandes à traiter","Suivi partagé entre les contremaîtres"],
   history:["Historique","Traçabilité de toutes les actions"],
+  stats:["Statistiques","Analyser les rejets par équipe, zone et motif"],
   settings:["Réglages","Modifier les équipes, contremaîtres, prestations et motifs"]
 };
 
@@ -324,6 +336,65 @@ function renderBars(id,data){
   el.className="bar-chart";
   el.innerHTML=entries.map(([label,val])=>`<div class="bar-row"><span title="${escapeHtml(label)}">${escapeHtml(label)}</span><div class="bar-track"><div class="bar-fill" style="width:${(val/max)*100}%"></div></div><strong>${val}</strong></div>`).join("");
 }
+/* ---------------------------------------------------------------------- */
+/* Statistiques                                                           */
+/* ---------------------------------------------------------------------- */
+
+function gdoZone(poste=""){
+  const m = String(poste).match(/^(\d{2})/);
+  return m ? m[1] : "Non renseigné";
+}
+
+function renderStatsFilters(){
+  const teamSel = document.getElementById("statsTeam"), curTeam = teamSel.value;
+  teamSel.innerHTML = `<option value="">Toutes les équipes</option>` + state.teams.map(t=>`<option>${escapeHtml(t.name)}</option>`).join("");
+  teamSel.value = curTeam;
+
+  const zones = [...new Set(state.requests.map(r=>gdoZone(r.poste)))].sort();
+  const zoneSel = document.getElementById("statsZone"), curZone = zoneSel.value;
+  zoneSel.innerHTML = `<option value="">Toutes les zones</option>` + zones.map(z=>`<option value="${escapeHtml(z)}">${escapeHtml(z)}</option>`).join("");
+  zoneSel.value = curZone;
+
+  const motifSel = document.getElementById("statsMotif"), curMotif = motifSel.value;
+  motifSel.innerHTML = `<option value="">Tous les motifs</option>` + state.reasons.map(m=>`<option>${escapeHtml(m)}</option>`).join("");
+  motifSel.value = curMotif;
+}
+
+function statsFilteredRequests(){
+  const from = document.getElementById("statsFrom").value;
+  const to = document.getElementById("statsTo").value;
+  const team = document.getElementById("statsTeam").value;
+  const zone = document.getElementById("statsZone").value;
+  const motif = document.getElementById("statsMotif").value;
+  return state.requests.filter(r=>{
+    if(team && r.equipe!==team) return false;
+    if(zone && gdoZone(r.poste)!==zone) return false;
+    if(motif && r.motif!==motif) return false;
+    if(from || to){
+      const d = r.date ? new Date(r.date) : (r.createdAt?.toDate ? r.createdAt.toDate() : null);
+      if(!d || Number.isNaN(d.getTime())) return false;
+      const day = d.toISOString().slice(0,10);
+      if(from && day<from) return false;
+      if(to && day>to) return false;
+    }
+    return true;
+  });
+}
+
+function renderStats(){
+  const rows = statsFilteredRequests();
+  document.getElementById("statsCount").textContent = `${rows.length} rejet${rows.length>1?"s":""} correspondant${rows.length>1?"s":""} aux filtres`;
+  renderBars("statsTeamChart", groupCount(rows,"equipe"));
+  renderBars("statsZoneChart", groupCount(rows.map(r=>({zone:gdoZone(r.poste)})),"zone"));
+  renderBars("statsMotifChart", groupCount(rows,"motif"));
+}
+["statsFrom","statsTo","statsTeam","statsZone","statsMotif"].forEach(id=>document.getElementById(id).addEventListener("input", renderStats));
+document.getElementById("statsReset").addEventListener("click", ()=>{
+  ["statsFrom","statsTo"].forEach(id=>document.getElementById(id).value="");
+  ["statsTeam","statsZone","statsMotif"].forEach(id=>document.getElementById(id).value="");
+  renderStats();
+});
+
 function requestTable(rows,actions=true){
   if(!rows.length) return `<div class="empty-state">Aucune demande</div>`;
   return `<table class="data-table"><thead><tr><th>Poste</th><th>Prestation</th><th>Équipe</th><th>Motif</th><th>Responsable</th><th>Statut</th><th>Date</th>${actions?"<th></th>":""}</tr></thead><tbody>
@@ -347,6 +418,16 @@ function renderFilters(){
 }
 ["filterStatus","filterTeam","filterSearch"].forEach(id=>document.getElementById(id).addEventListener("input",renderRequests));
 
+function requestHistoryHtml(requestId){
+  const entries = state.history.filter(h=>h.requestId===requestId);
+  if(!entries.length) return `<div class="empty-state">Aucun historique</div>`;
+  return entries.map(h=>`<div class="timeline-item">
+    <strong>${escapeHtml(h.text)}</strong>
+    <span>${escapeHtml(h.user)} · ${fmtDate(h.date)}</span>
+    ${h.photoURL?`<a href="${escapeHtml(h.photoURL)}" target="_blank" rel="noopener"><img class="history-photo" src="${escapeHtml(h.photoURL)}" alt="Photo jointe" loading="lazy" /></a>`:""}
+  </div>`).join("");
+}
+
 function openRequest(id){
   const r=state.requests.find(x=>x.id===id); if(!r)return;
   const d=document.getElementById("requestDialog");
@@ -363,6 +444,7 @@ function openRequest(id){
       <div class="detail-box full"><span>Action du contremaître</span><strong>${escapeHtml(r.action||"Aucune action renseignée")}</strong></div>
       <div class="detail-box full"><span>Traité par</span><strong>${escapeHtml(r.treatedBy||"—")}</strong></div>
       <div class="detail-box full"><span>Message original</span><pre>${escapeHtml(r.original||"—")}</pre></div>
+      <div class="detail-box full"><span>Historique de cette demande</span><div class="timeline">${requestHistoryHtml(r.id)}</div></div>
     </div>
     <div class="dialog-actions">
       <button type="button" class="secondary status-action" data-status="En cours">Passer en cours</button>
@@ -370,26 +452,78 @@ function openRequest(id){
       <button type="button" class="primary status-action" data-status="Traité">Marquer comme traité</button>
       <button type="button" class="secondary status-action" data-status="Classé sans action">Classer sans action</button>
     </div>`;
-  document.querySelectorAll(".status-action").forEach(btn=>btn.addEventListener("click", async ()=>{
-    const action=prompt("Action ou commentaire du contremaître :",r.action||"") ?? r.action;
-    const old=r.status; const newStatus=btn.dataset.status;
-    const patch={status:newStatus, action};
-    if(newStatus==="Traité"){patch.treatedBy=currentUser?.name||"";patch.treatedAt=serverTimestamp();}
-    btn.disabled = true;
-    try {
-      await updateDoc(doc(db,"requests",r.id), patch);
-      await logHistory(r.id, `${r.poste} : ${old} → ${newStatus}`);
-      d.close(); toast("Statut mis à jour.");
-    } catch(err) {
-      toast("Erreur : " + err.message);
-      btn.disabled = false;
-    }
+  document.querySelectorAll(".status-action").forEach(btn=>btn.addEventListener("click", ()=>{
+    d.close();
+    openActionDialog(r, btn.dataset.status);
   }));
   d.showModal();
 }
+
+let actionContext = null;
+const actionDialog = document.getElementById("actionDialog");
+
+function openActionDialog(request, newStatus){
+  actionContext = { request, newStatus };
+  document.getElementById("actionDialogTitle").textContent = `${newStatus} — ${request.poste||"Demande"}`;
+  document.getElementById("actionText").value = request.action || "";
+  document.getElementById("actionPhoto").value = "";
+  document.getElementById("actionPhotoPreview").innerHTML = "";
+  document.getElementById("actionError").textContent = "";
+  actionDialog.showModal();
+}
+document.getElementById("actionCancel").addEventListener("click", ()=>{ actionDialog.close(); actionContext = null; });
+document.getElementById("actionPhoto").addEventListener("change", (e)=>{
+  const file = e.target.files[0];
+  const preview = document.getElementById("actionPhotoPreview");
+  preview.innerHTML = file ? `<img src="${URL.createObjectURL(file)}" alt="Aperçu" />` : "";
+});
+document.getElementById("actionForm").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  if(!actionContext) return;
+  const { request: r, newStatus } = actionContext;
+  const action = document.getElementById("actionText").value.trim();
+  const file = document.getElementById("actionPhoto").files[0];
+  const btn = document.getElementById("actionSubmit");
+  const errEl = document.getElementById("actionError");
+  btn.disabled = true; errEl.textContent = "";
+  try {
+    let photoURL = null;
+    if(file){
+      if(!file.type.startsWith("image/")) throw new Error("Le fichier choisi n'est pas une image.");
+      if(file.size > 10*1024*1024) throw new Error("Photo trop volumineuse (max 10 Mo).");
+      const path = `requests/${r.id}/${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file, { contentType: file.type });
+      photoURL = await getDownloadURL(storageRef);
+    }
+    const old = r.status;
+    const patch = { status: newStatus, action };
+    if(newStatus==="Traité"){ patch.treatedBy = currentUser?.name || ""; patch.treatedAt = serverTimestamp(); }
+    await updateDoc(doc(db,"requests",r.id), patch);
+    await addDoc(collection(db,"history"), {
+      requestId: r.id,
+      text: `${r.poste} : ${old} → ${newStatus}`,
+      user: currentUser?.name || "Inconnu",
+      userId: currentUser?.uid || null,
+      date: serverTimestamp(),
+      photoURL: photoURL || null
+    });
+    actionDialog.close();
+    actionContext = null;
+    toast("Statut mis à jour.");
+  } catch(err) {
+    errEl.textContent = err.message || "Erreur lors de l'enregistrement.";
+  }
+  btn.disabled = false;
+});
+
 function renderHistory(){
   const el=document.getElementById("historyList");
-  el.innerHTML=state.history.length?state.history.map(h=>`<div class="timeline-item"><strong>${escapeHtml(h.text)}</strong><span>${escapeHtml(h.user)} · ${fmtDate(h.date)}</span></div>`).join(""):`<div class="empty-state">Aucun historique</div>`;
+  el.innerHTML=state.history.length?state.history.map(h=>`<div class="timeline-item">
+    <strong>${escapeHtml(h.text)}</strong>
+    <span>${escapeHtml(h.user)} · ${fmtDate(h.date)}</span>
+    ${h.photoURL?`<a href="${escapeHtml(h.photoURL)}" target="_blank" rel="noopener"><img class="history-photo" src="${escapeHtml(h.photoURL)}" alt="Photo jointe" loading="lazy" /></a>`:""}
+  </div>`).join(""):`<div class="empty-state">Aucun historique</div>`;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -398,7 +532,7 @@ function renderHistory(){
 
 function renderSettings(){
   if (currentUser?.role !== "admin") return;
-  document.getElementById("cmSettings").innerHTML=state.countermasters.map((c,i)=>`<div class="setting-row"><input class="cm-name" data-i="${i}" value="${escapeHtml(c.name)}"><button class="danger-button delete-cm" data-i="${i}">×</button></div>`).join("");
+  document.getElementById("cmSettings").innerHTML=state.countermasters.map((c,i)=>`<div class="setting-row cm"><input class="cm-name" data-i="${i}" value="${escapeHtml(c.name)}" placeholder="Nom"><input class="cm-email" data-i="${i}" value="${escapeHtml(c.email||"")}" type="email" placeholder="Email du compte lié"><button class="danger-button delete-cm" data-i="${i}">×</button></div>`).join("");
   document.getElementById("teamSettings").innerHTML=state.teams.map((t,i)=>`<div class="setting-row team"><input class="team-name" data-i="${i}" value="${escapeHtml(t.name)}"><select class="team-cm" data-i="${i}">${state.countermasters.map(c=>`<option ${c.name===t.cm?"selected":""}>${escapeHtml(c.name)}</option>`).join("")}</select><button class="danger-button delete-team" data-i="${i}">×</button></div>`).join("");
   document.getElementById("prestationSettings").innerHTML=state.prestations.map((p,i)=>`<div class="setting-row"><input class="prestation-name" data-i="${i}" value="${escapeHtml(p)}"><button class="danger-button delete-prestation" data-i="${i}">×</button></div>`).join("");
   document.getElementById("reasonSettings").innerHTML=state.reasons.map((p,i)=>`<div class="setting-row"><input class="reason-name" data-i="${i}" value="${escapeHtml(p)}"><button class="danger-button delete-reason" data-i="${i}">×</button></div>`).join("");
@@ -406,6 +540,7 @@ function renderSettings(){
 }
 function bindSettings(){
   document.querySelectorAll(".cm-name").forEach(x=>x.addEventListener("change",()=>{const old=state.countermasters[x.dataset.i].name;state.countermasters[x.dataset.i].name=x.value;state.teams.forEach(t=>{if(t.cm===old)t.cm=x.value});saveSettings()}));
+  document.querySelectorAll(".cm-email").forEach(x=>x.addEventListener("change",()=>{state.countermasters[x.dataset.i].email=x.value.trim();saveSettings()}));
   document.querySelectorAll(".team-name").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].name=x.value;saveSettings()}));
   document.querySelectorAll(".team-cm").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].cm=x.value;saveSettings()}));
   document.querySelectorAll(".prestation-name").forEach(x=>x.addEventListener("change",()=>{state.prestations[x.dataset.i]=x.value;saveSettings()}));
@@ -484,6 +619,76 @@ document.getElementById("addUserForm").addEventListener("submit", async e => {
 });
 
 /* ---------------------------------------------------------------------- */
+/* SMS automatique (admin uniquement)                                     */
+/* ---------------------------------------------------------------------- */
+
+const WEBHOOK_URL = `https://${FUNCTIONS_REGION}-${firebaseConfig.projectId}.cloudfunctions.net/receiveSms`;
+
+function renderSmsSettings(){
+  if (currentUser?.role !== "admin") return;
+  document.getElementById("smsWebhookUrl").value = WEBHOOK_URL;
+  document.getElementById("smsWebhookSecret").value = state.sms?.webhookSecret || "(aucune clé générée)";
+}
+document.getElementById("smsShowSecret").addEventListener("click", (e) => {
+  const input = document.getElementById("smsWebhookSecret");
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  e.target.textContent = show ? "Masquer" : "Afficher";
+});
+document.getElementById("smsRegenerateSecret").addEventListener("click", async () => {
+  if(!confirm("Régénérer la clé ? L'ancienne cessera immédiatement de fonctionner tant que l'application de transfert de SMS n'est pas mise à jour.")) return;
+  const btn = document.getElementById("smsRegenerateSecret");
+  btn.disabled = true;
+  try {
+    await setDoc(doc(db,"settings","sms"), {
+      webhookSecret: crypto.randomUUID(),
+      updatedAt: serverTimestamp(),
+      updatedBy: currentUser?.uid || null
+    }, { merge: true });
+    toast("Nouvelle clé générée.");
+  } catch(err) {
+    toast("Erreur : " + err.message);
+  }
+  btn.disabled = false;
+});
+
+/* ---------------------------------------------------------------------- */
+/* Notifications push                                                     */
+/* ---------------------------------------------------------------------- */
+
+function refreshNotificationStatus(){
+  const btn = document.getElementById("enableNotifications");
+  const statusEl = document.getElementById("notificationsStatus");
+  if(!("Notification" in window)){ statusEl.textContent = "Notifications non prises en charge par ce navigateur."; btn.disabled = true; return; }
+  if(Notification.permission === "denied"){ statusEl.textContent = "Notifications bloquées : autorisez-les dans les réglages du navigateur, puis réessayez."; }
+  else if(Notification.permission === "granted"){ statusEl.textContent = "Notifications activées sur cet appareil."; }
+  else { statusEl.textContent = ""; }
+}
+
+document.getElementById("enableNotifications").addEventListener("click", async () => {
+  const btn = document.getElementById("enableNotifications");
+  const statusEl = document.getElementById("notificationsStatus");
+  btn.disabled = true;
+  try {
+    if(!(await messagingIsSupported())) throw new Error("Les notifications ne sont pas prises en charge par ce navigateur.");
+    if(VAPID_KEY === "REPLACE_ME") throw new Error("Clé de notification non configurée par l'administrateur.");
+    const permission = await Notification.requestPermission();
+    if(permission !== "granted") throw new Error("Autorisation refusée.");
+    const swReg = await navigator.serviceWorker.register("firebase-messaging-sw.js", { type: "module" });
+    const messaging = getMessaging(firebaseApp);
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
+    await setDoc(doc(db, "users", currentUser.uid, "deviceTokens", token), {
+      createdAt: serverTimestamp(),
+      userAgent: navigator.userAgent
+    });
+    statusEl.textContent = "Notifications activées sur cet appareil.";
+  } catch(err) {
+    statusEl.textContent = "Erreur : " + (err.message || "impossible d'activer les notifications.");
+  }
+  btn.disabled = false;
+});
+
+/* ---------------------------------------------------------------------- */
 
 function renderAll(){
   if (!settingsLoaded) return;
@@ -492,6 +697,8 @@ function renderAll(){
   renderDashboard();
   renderRequests();
   renderHistory();
+  renderStatsFilters();
+  renderStats();
   renderSettings();
 }
 

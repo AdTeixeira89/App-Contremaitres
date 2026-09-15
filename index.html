@@ -68,6 +68,7 @@
         <button class="nav-item" data-view="new">Nouveau message</button>
         <button class="nav-item" data-view="requests">Demandes à traiter</button>
         <button class="nav-item" data-view="history">Historique</button>
+        <button class="nav-item" data-view="stats">Statistiques</button>
         <button class="nav-item admin-only hidden" data-view="settings">Réglages</button>
       </nav>
 
@@ -209,6 +210,42 @@ PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
         </article>
       </section>
 
+      <section id="view-stats" class="view">
+        <article class="panel">
+          <div class="panel-header wrap">
+            <div>
+              <h2>Statistiques des rejets</h2>
+              <p>Combinez les filtres pour identifier les équipes, zones et motifs à surveiller.</p>
+            </div>
+            <div class="filters">
+              <label class="inline-label">Du <input type="date" id="statsFrom" /></label>
+              <label class="inline-label">Au <input type="date" id="statsTo" /></label>
+              <select id="statsTeam"><option value="">Toutes les équipes</option></select>
+              <select id="statsZone"><option value="">Toutes les zones</option></select>
+              <select id="statsMotif"><option value="">Tous les motifs</option></select>
+              <button class="secondary" id="statsReset" type="button">Réinitialiser</button>
+            </div>
+          </div>
+          <p class="small-note" id="statsCount"></p>
+        </article>
+
+        <div class="panel-grid">
+          <article class="panel">
+            <div class="panel-header"><h2>Rejets par équipe</h2></div>
+            <div id="statsTeamChart" class="bar-chart empty-state">Aucune donnée</div>
+          </article>
+          <article class="panel">
+            <div class="panel-header"><h2>Rejets par zone (code GDO)</h2></div>
+            <div id="statsZoneChart" class="bar-chart empty-state">Aucune donnée</div>
+          </article>
+        </div>
+
+        <article class="panel">
+          <div class="panel-header"><h2>Motifs les plus fréquents</h2></div>
+          <div id="statsMotifChart" class="bar-chart empty-state">Aucune donnée</div>
+        </article>
+      </section>
+
       <section id="view-settings" class="view">
         <div class="settings-grid">
           <article class="panel">
@@ -252,6 +289,25 @@ PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
             <div id="reasonSettings"></div>
             <button class="secondary full-width" id="addReason">+ Ajouter un motif</button>
           </article>
+
+          <article class="panel">
+            <div class="panel-header"><h2>Notifications</h2></div>
+            <p class="small-note">Recevez une notification sur cet appareil dès qu'une demande vous est attribuée automatiquement par SMS.</p>
+            <button class="primary full-width" id="enableNotifications" type="button">Activer les notifications sur cet appareil</button>
+            <p class="small-note" id="notificationsStatus"></p>
+          </article>
+
+          <article class="panel admin-only hidden">
+            <div class="panel-header"><h2>SMS automatique</h2></div>
+            <p class="small-note">Adresse à configurer dans l'application de transfert de SMS installée sur le téléphone dédié.</p>
+            <label class="field">URL du webhook<input id="smsWebhookUrl" readonly /></label>
+            <label class="field">Clé secrète<input id="smsWebhookSecret" readonly type="password" /></label>
+            <div class="actions">
+              <button class="secondary" id="smsShowSecret" type="button">Afficher</button>
+              <button class="secondary" id="smsRegenerateSecret" type="button">Régénérer la clé</button>
+            </div>
+            <p class="small-note">Régénérer la clé invalide immédiatement l'ancienne : il faudra remettre à jour l'application de transfert de SMS.</p>
+          </article>
         </div>
 
         <article class="panel notice">
@@ -266,6 +322,20 @@ PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
     <form method="dialog" class="dialog-card">
       <button class="dialog-close" value="cancel">×</button>
       <div id="dialogContent"></div>
+    </form>
+  </dialog>
+
+  <dialog id="actionDialog">
+    <form class="dialog-card" id="actionForm">
+      <button class="dialog-close" type="button" id="actionCancel">×</button>
+      <h2 id="actionDialogTitle">Action du contremaître</h2>
+      <label class="field full">Commentaire<textarea id="actionText" rows="4"></textarea></label>
+      <label class="field full">Photo (optionnel)<input id="actionPhoto" type="file" accept="image/*" capture="environment" /></label>
+      <div id="actionPhotoPreview" class="photo-preview"></div>
+      <div id="actionError" class="error-msg"></div>
+      <div class="dialog-actions">
+        <button type="submit" class="primary" id="actionSubmit">Enregistrer</button>
+      </div>
     </form>
   </dialog>
 

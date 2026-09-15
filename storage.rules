@@ -1,10 +1,25 @@
 rules_version = '2';
 
-// Réservé à la phase suivante (photos jointes aux actions/commentaires).
-// Pour l'instant, aucun accès n'est ouvert : personne ne peut lire ni écrire
-// tant que les règles ne seront pas complétées avec la logique de rôle.
 service firebase.storage {
   match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isActiveUser() {
+      return isSignedIn() &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.active == true;
+    }
+
+    // Photos jointes aux actions/commentaires des demandes : tout compte actif
+    // peut en ajouter et les consulter. Limité aux images, 10 Mo max.
+    match /requests/{requestId}/{allPaths=**} {
+      allow read: if isActiveUser();
+      allow write: if isActiveUser()
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

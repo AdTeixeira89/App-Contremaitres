@@ -23,6 +23,11 @@ service cloud.firestore {
       allow get: if isSignedIn() && (request.auth.uid == uid || isAdmin());
       allow list: if isAdmin();
       allow write: if false;
+
+      // Jetons d'appareil pour les notifications push : chacun gère uniquement les siens.
+      match /deviceTokens/{tokenId} {
+        allow read, write: if isSignedIn() && request.auth.uid == uid;
+      }
     }
 
     // Demandes (fiches) : lisibles et modifiables par tout compte actif.
