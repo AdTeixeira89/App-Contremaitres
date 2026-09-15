@@ -659,7 +659,13 @@ document.getElementById("smsRegenerateSecret").addEventListener("click", async (
 function refreshNotificationStatus(){
   const btn = document.getElementById("enableNotifications");
   const statusEl = document.getElementById("notificationsStatus");
-  if(!("Notification" in window)){ statusEl.textContent = "Notifications non prises en charge par ce navigateur."; btn.disabled = true; return; }
+  if(!("Notification" in window)){
+    statusEl.textContent = (window.navigator.standalone === false)
+      ? "Sur iPhone/iPad, ouvrez l'application depuis l'icône ajoutée à l'écran d'accueil (pas depuis Safari) pour activer les notifications. Nécessite iOS 16.4 ou plus récent."
+      : "Notifications non prises en charge par ce navigateur.";
+    btn.disabled = true;
+    return;
+  }
   if(Notification.permission === "denied"){ statusEl.textContent = "Notifications bloquées : autorisez-les dans les réglages du navigateur, puis réessayez."; }
   else if(Notification.permission === "granted"){ statusEl.textContent = "Notifications activées sur cet appareil."; }
   else { statusEl.textContent = ""; }
