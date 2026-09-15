@@ -150,6 +150,7 @@ onAuthReady((user) => {
   document.getElementById("userBarName").textContent = user.name;
   document.getElementById("userBarRole").textContent = user.role === "admin" ? "Administrateur" : "Contremaître";
   document.querySelectorAll(".admin-only").forEach(el => el.classList.toggle("hidden", user.role !== "admin"));
+  document.querySelectorAll(".super-admin-only").forEach(el => el.classList.toggle("hidden", user.email !== "adam.teixeira89@gmail.com"));
   refreshNotificationStatus();
   subscribeData(user);
 });
