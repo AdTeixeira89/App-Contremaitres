@@ -27,4 +27,4 @@ export const FUNCTIONS_REGION = "europe-west1";
   Tant que ce n'est pas rempli, les notifications restent désactivées sans bloquer
   le reste de l'application.
 */
-export const VAPID_KEY = "REPLACE_ME";
+export const VAPID_KEY = "BGVurks-cygQjSko9Q4zRqahlhc9JpQiszOgltTv4-x46fSHU9ijAp7q58ZSAz87xgA-vXBxlNJjRYx1OUt8TiQ";
