@@ -30,8 +30,16 @@ const DEFAULT_SETTINGS = {
   ]
 };
 
-let state = { countermasters: [], teams: [], prestations: [], reasons: [], requests: [], history: [], users: [], sms: null };
+let state = { countermasters: [], teams: [], prestations: [], reasons: [], requests: [], history: [], users: [], sms: null, rendementTasks: [], rendementThreshold: 0, yieldAlerts: [] };
+
+const DEFAULT_RENDEMENT_TASKS = [
+  "Postes travaillés", "IA travaillés", "Nombre terrassements", "Métrage",
+  "Nombre séries", "Nombre piquets", "Racc poteau", "Racc BFC",
+  "Méthode douce", "Recherche PP", "Mesures", "Débroussaillage",
+  "Visites", "Études", "Rdv"
+].map(label => ({ id: crypto.randomUUID(), label, points: 1 }));
 let settingsLoaded = false;
+let rendementSettingsLoaded = false;
 let unsubscribers = [];
 
 function toast(message) {
@@ -123,6 +131,7 @@ onAuthReady((user) => {
   unsubscribers = [];
   if (!user) {
     settingsLoaded = false;
+    rendementSettingsLoaded = false;
     loginScreen.style.display = "flex";
     appShell.style.display = "none";
     document.getElementById("loginForm").reset();
@@ -162,14 +171,34 @@ function subscribeData(user) {
     renderAll();
   }, () => toast("Erreur de synchronisation des réglages.")));
 
+  unsubscribers.push(onSnapshot(doc(db, "settings", "rendement"), async (snap) => {
+    if (!snap.exists()) {
+      if (user.role === "admin") {
+        await setDoc(doc(db, "settings", "rendement"), { tasks: DEFAULT_RENDEMENT_TASKS, threshold: 0, updatedAt: serverTimestamp(), updatedBy: user.uid });
+      }
+      return;
+    }
+    const d = snap.data();
+    state.rendementTasks = d.tasks || [];
+    state.rendementThreshold = typeof d.threshold === "number" ? d.threshold : 0;
+    rendementSettingsLoaded = true;
+    renderAll();
+  }, () => toast("Erreur de synchronisation du barème rendement.")));
+
   unsubscribers.push(onSnapshot(query(collection(db, "requests"), orderBy("createdAt", "desc")), (snap) => {
     state.requests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderAll();
   }, () => toast("Erreur de synchronisation des demandes.")));
 
-  unsubscribers.push(onSnapshot(query(collection(db, "history"), orderBy("date", "desc"), limit(300)), (snap) => {
+  unsubscribers.push(onSnapshot(query(collection(db, "yieldAlerts"), orderBy("createdAt", "desc")), (snap) => {
+    state.yieldAlerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderAll();
+  }, () => toast("Erreur de synchronisation des rendements.")));
+
+  unsubscribers.push(onSnapshot(query(collection(db, "history"), orderBy("date", "desc"), limit(500)), (snap) => {
     state.history = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderHistory();
+    renderRendementHistory();
   }, () => toast("Erreur de synchronisation de l'historique.")));
 
   if (user.role === "admin") {
@@ -215,6 +244,10 @@ const titles = {
   requests:["Demandes à traiter","Suivi partagé entre les contremaîtres"],
   history:["Historique","Traçabilité de toutes les actions"],
   stats:["Statistiques","Analyser les rejets par équipe, zone et motif"],
+  "rendement-new":["Nouveau rendement","Coller et analyser un SMS de rendement"],
+  "rendement-list":["Alertes rendement","Suivi partagé entre les contremaîtres"],
+  "rendement-history":["Historique rendement","Traçabilité de toutes les actions"],
+  "rendement-stats":["Statistiques rendement","Analyser les rendements par CDT et par chantier"],
   settings:["Réglages","Notifications, et pour l'administrateur : comptes, équipes, contremaîtres, prestations et motifs"]
 };
 
@@ -230,6 +263,7 @@ function switchView(name){
   document.getElementById("pageSubtitle").textContent=titles[name][1];
   document.querySelector(".sidebar").classList.remove("open");
   if(name==="new") hydrateFormOptions();
+  if(name==="rendement-new"){ hydrateRendementFormOptions(); renderRendementTaskFieldsInputs(); }
 }
 
 function hydrateFormOptions(){
@@ -418,7 +452,7 @@ function renderFilters(){
 ["filterStatus","filterTeam","filterSearch"].forEach(id=>document.getElementById(id).addEventListener("input",renderRequests));
 
 function requestHistoryHtml(requestId){
-  const entries = state.history.filter(h=>h.requestId===requestId);
+  const entries = state.history.filter(h=>h.requestId===requestId && h.kind!=="yield");
   if(!entries.length) return `<div class="empty-state">Aucun historique</div>`;
   return entries.map(h=>`<div class="timeline-item">
     <strong>${escapeHtml(h.text)}</strong>
@@ -453,7 +487,7 @@ function openRequest(id){
     </div>`;
   document.querySelectorAll(".status-action").forEach(btn=>btn.addEventListener("click", ()=>{
     d.close();
-    openActionDialog(r, btn.dataset.status);
+    openActionDialog("requests", r, btn.dataset.status, r.poste||"Demande");
   }));
   d.showModal();
 }
@@ -461,10 +495,10 @@ function openRequest(id){
 let actionContext = null;
 const actionDialog = document.getElementById("actionDialog");
 
-function openActionDialog(request, newStatus){
-  actionContext = { request, newStatus };
-  document.getElementById("actionDialogTitle").textContent = `${newStatus} — ${request.poste||"Demande"}`;
-  document.getElementById("actionText").value = request.action || "";
+function openActionDialog(collectionName, record, newStatus, label){
+  actionContext = { collection: collectionName, id: record.id, oldStatus: record.status, newStatus, label };
+  document.getElementById("actionDialogTitle").textContent = `${newStatus} — ${label}`;
+  document.getElementById("actionText").value = record.action || "";
   document.getElementById("actionPhoto").value = "";
   document.getElementById("actionPhotoPreview").innerHTML = "";
   document.getElementById("actionError").textContent = "";
@@ -479,7 +513,7 @@ document.getElementById("actionPhoto").addEventListener("change", (e)=>{
 document.getElementById("actionForm").addEventListener("submit", async (e)=>{
   e.preventDefault();
   if(!actionContext) return;
-  const { request: r, newStatus } = actionContext;
+  const { collection: col, id, oldStatus, newStatus, label } = actionContext;
   const action = document.getElementById("actionText").value.trim();
   const file = document.getElementById("actionPhoto").files[0];
   const btn = document.getElementById("actionSubmit");
@@ -490,23 +524,24 @@ document.getElementById("actionForm").addEventListener("submit", async (e)=>{
     if(file){
       if(!file.type.startsWith("image/")) throw new Error("Le fichier choisi n'est pas une image.");
       if(file.size > 10*1024*1024) throw new Error("Photo trop volumineuse (max 10 Mo).");
-      const path = `requests/${r.id}/${Date.now()}_${file.name}`;
+      const path = `${col}/${id}/${Date.now()}_${file.name}`;
       const storageRef = ref(storage, path);
       await uploadBytes(storageRef, file, { contentType: file.type });
       photoURL = await getDownloadURL(storageRef);
     }
-    const old = r.status;
     const patch = { status: newStatus, action };
     if(newStatus==="Traité"){ patch.treatedBy = currentUser?.name || ""; patch.treatedAt = serverTimestamp(); }
-    await updateDoc(doc(db,"requests",r.id), patch);
-    await addDoc(collection(db,"history"), {
-      requestId: r.id,
-      text: `${r.poste} : ${old} → ${newStatus}`,
+    await updateDoc(doc(db,col,id), patch);
+    const historyEntry = {
+      text: `${label} : ${oldStatus} → ${newStatus}`,
       user: currentUser?.name || "Inconnu",
       userId: currentUser?.uid || null,
       date: serverTimestamp(),
       photoURL: photoURL || null
-    });
+    };
+    if(col === "yieldAlerts"){ historyEntry.kind = "yield"; historyEntry.yieldAlertId = id; }
+    else { historyEntry.requestId = id; }
+    await addDoc(collection(db,"history"), historyEntry);
     actionDialog.close();
     actionContext = null;
     toast("Statut mis à jour.");
@@ -618,6 +653,284 @@ document.getElementById("addUserForm").addEventListener("submit", async e => {
 });
 
 /* ---------------------------------------------------------------------- */
+/* Rendement                                                              */
+/* ---------------------------------------------------------------------- */
+
+function parseRendementText(raw){
+  const n = normalize(raw);
+  const chantierMatch = raw.match(/CHANTIER\s*:\s*(\S+)/i);
+  const chantier = chantierMatch ? chantierMatch[1].trim() : "";
+  const cdtMatch = raw.match(/CDT\s*:\s*([^\n\r]+)/i);
+  const cdt = cdtMatch ? cdtMatch[1].trim() : "";
+  const cdtNorm = normalize(cdt);
+  const team = state.teams.find(t=>{
+    const names=(t.technicians||"").split(",").map(x=>normalize(x.trim()));
+    return names.some(name=>name && cdtNorm.includes(name.split(" ")[0])) || cdtNorm.includes(normalize(t.name));
+  });
+  const values = {};
+  state.rendementTasks.forEach(task=>{
+    const labelNorm = normalize(task.label).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+    const re = new RegExp(labelNorm + "\\s*:\\s*(\\d+(?:[.,]\\d+)?)", "i");
+    const m = n.match(re);
+    values[task.id] = m ? parseFloat(m[1].replace(",",".")) : 0;
+  });
+  const score = state.rendementTasks.reduce((sum,t)=>sum + (values[t.id]||0) * (Number(t.points)||0), 0);
+  return { chantier, cdt, team, values, score };
+}
+
+function renderRendementTaskFieldsInputs(){
+  const container = document.getElementById("rendementTaskFields");
+  container.innerHTML = state.rendementTasks.map(t=>`
+    <label>${escapeHtml(t.label)} (×${t.points})<input type="number" step="any" class="rendement-task-input" data-task="${t.id}" /></label>
+  `).join("");
+  container.querySelectorAll(".rendement-task-input").forEach(inp=>inp.addEventListener("input", updateRendementScorePreview));
+  updateRendementScorePreview();
+}
+function setRendementTaskValues(values){
+  document.querySelectorAll(".rendement-task-input").forEach(inp=>{ inp.value = values[inp.dataset.task] ?? ""; });
+  updateRendementScorePreview();
+}
+function updateRendementScorePreview(){
+  let score = 0;
+  document.querySelectorAll(".rendement-task-input").forEach(inp=>{
+    const task = state.rendementTasks.find(t=>t.id===inp.dataset.task);
+    score += (parseFloat(inp.value)||0) * (Number(task?.points)||0);
+  });
+  const el = document.getElementById("rendementScorePreview");
+  el.textContent = `${score} (seuil : ${state.rendementThreshold})${score < state.rendementThreshold ? " — EN ALERTE" : ""}`;
+}
+
+function hydrateRendementFormOptions(){
+  const fill=(id,items)=>document.getElementById(id).innerHTML=items.map(x=>`<option>${escapeHtml(x)}</option>`).join("");
+  fill("rendementEquipe", state.teams.map(t=>t.name));
+  fill("rendementCM", state.countermasters.map(c=>c.name));
+  if(!document.getElementById("rendementDate").value) document.getElementById("rendementDate").value=nowLocalInput();
+}
+document.getElementById("rendementEquipe").addEventListener("change",e=>{
+  const team=state.teams.find(t=>t.name===e.target.value);
+  if(team) document.getElementById("rendementCM").value=team.cm;
+});
+
+document.getElementById("analyzeRendement").addEventListener("click",()=>{
+  const raw=document.getElementById("rendementRawMessage").value.trim();
+  if(!raw) return toast("Collez d'abord un message.");
+  const parsed = parseRendementText(raw);
+  document.getElementById("rendementChantier").value = parsed.chantier;
+  document.getElementById("rendementCdt").value = parsed.cdt;
+  document.getElementById("rendementEquipe").value = parsed.team?.name || "";
+  document.getElementById("rendementCM").value = parsed.team?.cm || state.countermasters[0]?.name || "";
+  document.getElementById("rendementStatus").value = "À traiter";
+  document.getElementById("rendementDate").value = nowLocalInput();
+  document.getElementById("rendementOriginal").value = raw;
+  if(!document.querySelector(".rendement-task-input")) renderRendementTaskFieldsInputs();
+  setRendementTaskValues(parsed.values);
+  toast("Message analysé. Vérifiez la fiche.");
+});
+document.getElementById("clearRendement").addEventListener("click",()=>{
+  document.getElementById("rendementRawMessage").value="";
+  document.getElementById("rendementForm").reset();
+  renderRendementTaskFieldsInputs();
+  hydrateRendementFormOptions();
+});
+
+document.getElementById("rendementForm").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const btn = e.target.querySelector("button[type=submit]");
+  btn.disabled = true;
+  try {
+    const tasksValues = {};
+    let score = 0;
+    document.querySelectorAll(".rendement-task-input").forEach(inp=>{
+      const task = state.rendementTasks.find(t=>t.id===inp.dataset.task);
+      const val = parseFloat(inp.value)||0;
+      tasksValues[inp.dataset.task] = val;
+      score += val * (Number(task?.points)||0);
+    });
+    const threshold = state.rendementThreshold;
+    const alertDoc = {
+      chantier: document.getElementById("rendementChantier").value.trim(),
+      cdt: document.getElementById("rendementCdt").value.trim(),
+      equipe: document.getElementById("rendementEquipe").value,
+      cm: document.getElementById("rendementCM").value,
+      status: document.getElementById("rendementStatus").value,
+      date: document.getElementById("rendementDate").value,
+      action: document.getElementById("rendementAction").value.trim(),
+      original: document.getElementById("rendementOriginal").value,
+      tasks: tasksValues,
+      score, threshold, belowThreshold: score < threshold,
+      treatedBy:"", treatedAt:"",
+      createdAt: serverTimestamp(),
+      createdBy: currentUser?.uid || null,
+      createdByName: currentUser?.name || ""
+    };
+    const ref = await addDoc(collection(db,"yieldAlerts"), alertDoc);
+    await addDoc(collection(db,"history"), {
+      kind: "yield", yieldAlertId: ref.id,
+      text: `Rendement ${alertDoc.chantier||"—"}/${alertDoc.cdt||"—"} créé`,
+      user: currentUser?.name || "Inconnu",
+      userId: currentUser?.uid || null,
+      date: serverTimestamp()
+    });
+    document.getElementById("rendementRawMessage").value="";
+    document.getElementById("rendementForm").reset();
+    renderRendementTaskFieldsInputs();
+    toast("Rendement enregistré.");
+    switchView("rendement-list");
+  } catch(err) {
+    toast("Erreur d'enregistrement : " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function rendementTable(rows, actions=true){
+  if(!rows.length) return `<div class="empty-state">Aucun rendement</div>`;
+  return `<table class="data-table"><thead><tr><th>Chantier</th><th>CDT</th><th>Équipe</th><th>Contremaître</th><th>Score/Seuil</th><th>Statut</th><th>Date</th>${actions?"<th></th>":""}</tr></thead><tbody>
+  ${rows.map(r=>`<tr><td><strong>${escapeHtml(r.chantier||"—")}</strong></td><td>${escapeHtml(r.cdt||"—")}</td><td>${escapeHtml(r.equipe)}</td><td>${escapeHtml(r.cm)}</td><td>${r.score}/${r.threshold}${r.belowThreshold?` <span class="badge todo">Alerte</span>`:""}</td><td><span class="badge ${statusClass(r.status)}">${escapeHtml(r.status)}</span></td><td>${fmtDate(r.date)}</td>${actions?`<td><button class="link-button open-rendement" data-id="${r.id}">Ouvrir</button></td>`:""}</tr>`).join("")}
+  </tbody></table>`;
+}
+function renderRendementList(){
+  const status=document.getElementById("rendementFilterStatus").value;
+  const team=document.getElementById("rendementFilterTeam").value;
+  const q=normalize(document.getElementById("rendementFilterSearch").value);
+  const rows=state.yieldAlerts.filter(r=>(!status||r.status===status)&&(!team||r.equipe===team)&&(!q||normalize(JSON.stringify(r)).includes(q)));
+  document.getElementById("rendementTable").innerHTML=rendementTable(rows,true);
+  document.querySelectorAll(".open-rendement").forEach(b=>b.addEventListener("click",()=>openYieldAlert(b.dataset.id)));
+}
+function renderRendementFilters(){
+  const statuses=["À traiter","En cours","En attente","Traité","Classé sans action"];
+  const s=document.getElementById("rendementFilterStatus"), current=s.value;
+  s.innerHTML=`<option value="">Tous les statuts</option>`+statuses.map(x=>`<option>${x}</option>`).join("");s.value=current;
+  const t=document.getElementById("rendementFilterTeam"), cur=t.value;
+  t.innerHTML=`<option value="">Toutes les équipes</option>`+state.teams.map(x=>`<option>${escapeHtml(x.name)}</option>`).join("");t.value=cur;
+}
+["rendementFilterStatus","rendementFilterTeam","rendementFilterSearch"].forEach(id=>document.getElementById(id).addEventListener("input",renderRendementList));
+
+function yieldAlertHistoryHtml(alertId){
+  const entries = state.history.filter(h=>h.kind==="yield" && h.yieldAlertId===alertId);
+  if(!entries.length) return `<div class="empty-state">Aucun historique</div>`;
+  return entries.map(h=>`<div class="timeline-item">
+    <strong>${escapeHtml(h.text)}</strong>
+    <span>${escapeHtml(h.user)} · ${fmtDate(h.date)}</span>
+    ${h.photoURL?`<a href="${escapeHtml(h.photoURL)}" target="_blank" rel="noopener"><img class="history-photo" src="${escapeHtml(h.photoURL)}" alt="Photo jointe" loading="lazy" /></a>`:""}
+  </div>`).join("");
+}
+function openYieldAlert(id){
+  const r=state.yieldAlerts.find(x=>x.id===id); if(!r)return;
+  const d=document.getElementById("requestDialog");
+  const taskDetails = state.rendementTasks.map(t=>`<div class="detail-box"><span>${escapeHtml(t.label)}</span><strong>${r.tasks?.[t.id]??0} × ${t.points}</strong></div>`).join("");
+  const label = `Chantier ${r.chantier||"—"} — ${r.cdt||"—"}`;
+  document.getElementById("dialogContent").innerHTML=`
+    <h2>${escapeHtml(label)}</h2>
+    <p><span class="badge ${statusClass(r.status)}">${escapeHtml(r.status)}</span> ${r.belowThreshold?`<span class="badge todo">En alerte</span>`:""}</p>
+    <div class="detail-grid">
+      <div class="detail-box"><span>Équipe</span><strong>${escapeHtml(r.equipe)}</strong></div>
+      <div class="detail-box"><span>Contremaître</span><strong>${escapeHtml(r.cm)}</strong></div>
+      <div class="detail-box"><span>Score</span><strong>${r.score} / seuil ${r.threshold}</strong></div>
+      <div class="detail-box"><span>Date</span><strong>${fmtDate(r.date)}</strong></div>
+      ${taskDetails}
+      <div class="detail-box full"><span>Action du contremaître</span><strong>${escapeHtml(r.action||"Aucune action renseignée")}</strong></div>
+      <div class="detail-box full"><span>Traité par</span><strong>${escapeHtml(r.treatedBy||"—")}</strong></div>
+      <div class="detail-box full"><span>Message original</span><pre>${escapeHtml(r.original||"—")}</pre></div>
+      <div class="detail-box full"><span>Historique de ce rendement</span><div class="timeline">${yieldAlertHistoryHtml(r.id)}</div></div>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="secondary rendement-status-action" data-status="En cours">Passer en cours</button>
+      <button type="button" class="secondary rendement-status-action" data-status="En attente">Mettre en attente</button>
+      <button type="button" class="primary rendement-status-action" data-status="Traité">Marquer comme traité</button>
+      <button type="button" class="secondary rendement-status-action" data-status="Classé sans action">Classer sans action</button>
+    </div>`;
+  document.querySelectorAll(".rendement-status-action").forEach(btn=>btn.addEventListener("click", ()=>{
+    d.close();
+    openActionDialog("yieldAlerts", r, btn.dataset.status, label);
+  }));
+  d.showModal();
+}
+
+function renderRendementHistory(){
+  const el=document.getElementById("rendementHistoryList");
+  const entries = state.history.filter(h=>h.kind==="yield");
+  el.innerHTML=entries.length?entries.map(h=>`<div class="timeline-item">
+    <strong>${escapeHtml(h.text)}</strong>
+    <span>${escapeHtml(h.user)} · ${fmtDate(h.date)}</span>
+    ${h.photoURL?`<a href="${escapeHtml(h.photoURL)}" target="_blank" rel="noopener"><img class="history-photo" src="${escapeHtml(h.photoURL)}" alt="Photo jointe" loading="lazy" /></a>`:""}
+  </div>`).join(""):`<div class="empty-state">Aucun historique</div>`;
+}
+
+function renderRendementStatsFilters(){
+  const cdts = [...new Set(state.yieldAlerts.map(r=>r.cdt).filter(Boolean))].sort();
+  const cdtSel = document.getElementById("rendementStatsCdt"), curCdt = cdtSel.value;
+  cdtSel.innerHTML = `<option value="">Tous les CDT</option>` + cdts.map(c=>`<option>${escapeHtml(c)}</option>`).join("");
+  cdtSel.value = curCdt;
+
+  const chantiers = [...new Set(state.yieldAlerts.map(r=>r.chantier).filter(Boolean))].sort();
+  const chSel = document.getElementById("rendementStatsChantier"), curCh = chSel.value;
+  chSel.innerHTML = `<option value="">Tous les chantiers</option>` + chantiers.map(c=>`<option>${escapeHtml(c)}</option>`).join("");
+  chSel.value = curCh;
+}
+function rendementStatsFiltered(){
+  const from = document.getElementById("rendementStatsFrom").value;
+  const to = document.getElementById("rendementStatsTo").value;
+  const cdt = document.getElementById("rendementStatsCdt").value;
+  const chantier = document.getElementById("rendementStatsChantier").value;
+  return state.yieldAlerts.filter(r=>{
+    if(cdt && r.cdt!==cdt) return false;
+    if(chantier && r.chantier!==chantier) return false;
+    if(from || to){
+      const d = r.date ? new Date(r.date) : (r.createdAt?.toDate ? r.createdAt.toDate() : null);
+      if(!d || Number.isNaN(d.getTime())) return false;
+      const day = d.toISOString().slice(0,10);
+      if(from && day<from) return false;
+      if(to && day>to) return false;
+    }
+    return true;
+  });
+}
+function renderRendementStats(){
+  const rows = rendementStatsFiltered();
+  document.getElementById("rendementStatsCount").textContent = `${rows.length} rendement${rows.length>1?"s":""} correspondant${rows.length>1?"s":""} aux filtres`;
+  renderBars("rendementStatsCdtChart", groupCount(rows,"cdt"));
+  renderBars("rendementStatsChantierChart", groupCount(rows,"chantier"));
+  renderBars("rendementStatsAlertChart", groupCount(rows.filter(r=>r.belowThreshold),"cdt"));
+}
+["rendementStatsFrom","rendementStatsTo","rendementStatsCdt","rendementStatsChantier"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
+document.getElementById("rendementStatsReset").addEventListener("click", ()=>{
+  ["rendementStatsFrom","rendementStatsTo"].forEach(id=>document.getElementById(id).value="");
+  ["rendementStatsCdt","rendementStatsChantier"].forEach(id=>document.getElementById(id).value="");
+  renderRendementStats();
+});
+
+async function saveRendementSettings(){
+  await setDoc(doc(db,"settings","rendement"), {
+    tasks: state.rendementTasks,
+    threshold: state.rendementThreshold,
+    updatedAt: serverTimestamp(),
+    updatedBy: currentUser?.uid || null
+  }, { merge:true });
+}
+function renderRendementTaskSettings(){
+  if (currentUser?.role !== "admin") return;
+  document.getElementById("rendementTaskSettings").innerHTML = state.rendementTasks.map((t,i)=>`
+    <div class="setting-row cm">
+      <input class="rt-label" data-i="${i}" value="${escapeHtml(t.label)}" placeholder="Nom de la tâche">
+      <input class="rt-points" data-i="${i}" type="number" step="any" value="${t.points}" placeholder="Points">
+      <button class="danger-button rt-delete" data-i="${i}">×</button>
+    </div>`).join("");
+  document.getElementById("rendementThreshold").value = state.rendementThreshold;
+  document.querySelectorAll(".rt-label").forEach(x=>x.addEventListener("change",()=>{state.rendementTasks[x.dataset.i].label=x.value;saveRendementSettings()}));
+  document.querySelectorAll(".rt-points").forEach(x=>x.addEventListener("change",()=>{state.rendementTasks[x.dataset.i].points=parseFloat(x.value)||0;saveRendementSettings()}));
+  document.querySelectorAll(".rt-delete").forEach(x=>x.addEventListener("click",()=>{state.rendementTasks.splice(Number(x.dataset.i),1);saveRendementSettings()}));
+}
+document.getElementById("addRendementTask").addEventListener("click",()=>{
+  state.rendementTasks.push({id:crypto.randomUUID(),label:"Nouvelle tâche",points:1});
+  saveRendementSettings();
+});
+document.getElementById("rendementThreshold").addEventListener("change",(e)=>{
+  state.rendementThreshold = parseFloat(e.target.value)||0;
+  saveRendementSettings();
+});
+
+/* ---------------------------------------------------------------------- */
 /* SMS automatique (admin uniquement)                                     */
 /* ---------------------------------------------------------------------- */
 
@@ -696,7 +1009,7 @@ document.getElementById("enableNotifications").addEventListener("click", async (
 /* ---------------------------------------------------------------------- */
 
 function renderAll(){
-  if (!settingsLoaded) return;
+  if (!settingsLoaded || !rendementSettingsLoaded) return;
   hydrateFormOptions();
   renderFilters();
   renderDashboard();
@@ -705,6 +1018,13 @@ function renderAll(){
   renderStatsFilters();
   renderStats();
   renderSettings();
+  hydrateRendementFormOptions();
+  renderRendementFilters();
+  renderRendementList();
+  renderRendementHistory();
+  renderRendementStatsFilters();
+  renderRendementStats();
+  renderRendementTaskSettings();
 }
 
 if("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");

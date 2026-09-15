@@ -23,6 +23,13 @@ et base de données partagée (Firebase).
 - **Réception automatique des SMS** : un téléphone dédié transfère chaque SMS reçu vers
   l'application, qui reconnaît le technicien concerné (même logique que l'analyse
   manuelle), crée la fiche automatiquement et notifie le bon contremaître.
+- **Rendement** : domaine séparé des rejets, avec ses propres statuts, sa fenêtre
+  d'action (commentaire + photo), son historique et ses statistiques (par CDT et par
+  chantier). Un SMS titré « RENDEMENT » est reconnu automatiquement : chaque tâche
+  chiffrée est pondérée par un barème de points modifiable dans Réglages, et une
+  notification n'est envoyée au contremaître que si le score total tombe sous le seuil
+  configuré — le rendement est toujours enregistré, alerte ou non, pour le suivi dans
+  le temps.
 - Installation possible comme application web sur téléphone (PWA).
 
 ## Architecture
@@ -31,11 +38,14 @@ et base de données partagée (Firebase).
   quel. Modules ES (`app.js`, `auth.js`, `firebase-init.js`).
 - **Backend** : [Firebase](https://firebase.google.com)
   - **Authentication** : comptes email/mot de passe.
-  - **Firestore** : base de données (`users`, `requests`, `history`, `settings`).
+  - **Firestore** : base de données (`users`, `requests`, `yieldAlerts`, `history`,
+    `settings`). `yieldAlerts` (rendement) reste entièrement séparée de `requests`
+    (rejets), y compris dans l'historique (champ `kind`).
   - **Cloud Functions** (`functions/`) : gestion des comptes (création, rôle,
     activation/désactivation, suppression) ; `receiveSms` reçoit les SMS transférés par
-    le téléphone dédié, reconnaît le technicien/l'équipe, crée la fiche et notifie le
-    contremaître concerné.
+    le téléphone dédié, distingue un SMS de rejet d'un SMS de rendement (titré
+    « RENDEMENT »), reconnaît le technicien/l'équipe ou le CDT, crée la fiche
+    correspondante et notifie le contremaître concerné.
   - **Firestore Security Rules** (`firestore.rules`) : appliquent les droits selon le
     rôle (`admin` / `contremaitre`) directement côté serveur.
   - **Firebase Storage** (`storage.rules`) : stockage des photos jointes aux actions,
@@ -103,6 +113,10 @@ et base de données partagée (Firebase).
      personnalisé pour la clé secrète.
 3. Envoyer un SMS de test contenant un nom de technicien connu et un code GDO, vérifier
    qu'une fiche apparaît automatiquement dans **Demandes à traiter**.
+
+Un SMS **titré « RENDEMENT »** (avec les lignes `CHANTIER:` et `CDT:`) est reconnu comme
+un rendement plutôt qu'un rejet et suit le même webhook — voir **Réglages > Barème
+rendement** pour définir les tâches, leurs points, et le seuil d'alerte avant de tester.
 
 ## Développement local
 
