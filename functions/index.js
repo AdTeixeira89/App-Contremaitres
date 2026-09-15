@@ -206,7 +206,7 @@ async function notifyCountermaster(cmName, settings, requestSummary) {
 // téléphone dédié. Sécurisé par une clé secrète (settings/sms.webhookSecret,
 // régénérable par l'administrateur depuis Réglages), pas par une session
 // utilisateur puisque l'appelant n'est pas un utilisateur de l'application.
-exports.receiveSms = onRequest(async (req, res) => {
+exports.receiveSms = onRequest({ invoker: "public" }, async (req, res) => {
   try {
     if (req.method !== "POST") {
       res.status(405).json({ error: "Méthode non autorisée, utilisez POST." });
