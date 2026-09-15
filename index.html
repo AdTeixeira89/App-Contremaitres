@@ -69,7 +69,7 @@
         <button class="nav-item" data-view="requests">Demandes à traiter</button>
         <button class="nav-item" data-view="history">Historique</button>
         <button class="nav-item" data-view="stats">Statistiques</button>
-        <button class="nav-item admin-only hidden" data-view="settings">Réglages</button>
+        <button class="nav-item" data-view="settings">Réglages</button>
       </nav>
 
       <div class="sidebar-footer">
@@ -248,7 +248,7 @@ PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
 
       <section id="view-settings" class="view">
         <div class="settings-grid">
-          <article class="panel">
+          <article class="panel admin-only hidden">
             <div class="panel-header"><h2>Comptes utilisateurs</h2></div>
             <div id="userAccounts"></div>
             <form id="addUserForm" class="form-grid" style="margin-top:14px">
@@ -266,25 +266,25 @@ PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
             </form>
           </article>
 
-          <article class="panel">
+          <article class="panel admin-only hidden">
             <div class="panel-header"><h2>Contremaîtres</h2></div>
             <div id="cmSettings"></div>
             <button class="secondary full-width" id="addCM">+ Ajouter un contremaître</button>
           </article>
 
-          <article class="panel">
+          <article class="panel admin-only hidden">
             <div class="panel-header"><h2>Équipes</h2></div>
             <div id="teamSettings"></div>
             <button class="secondary full-width" id="addTeam">+ Ajouter une équipe</button>
           </article>
 
-          <article class="panel">
+          <article class="panel admin-only hidden">
             <div class="panel-header"><h2>Prestations</h2></div>
             <div id="prestationSettings"></div>
             <button class="secondary full-width" id="addPrestation">+ Ajouter une prestation</button>
           </article>
 
-          <article class="panel">
+          <article class="panel admin-only hidden">
             <div class="panel-header"><h2>Motifs</h2></div>
             <div id="reasonSettings"></div>
             <button class="secondary full-width" id="addReason">+ Ajouter un motif</button>

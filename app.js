@@ -215,7 +215,7 @@ const titles = {
   requests:["Demandes à traiter","Suivi partagé entre les contremaîtres"],
   history:["Historique","Traçabilité de toutes les actions"],
   stats:["Statistiques","Analyser les rejets par équipe, zone et motif"],
-  settings:["Réglages","Modifier les équipes, contremaîtres, prestations et motifs"]
+  settings:["Réglages","Notifications, et pour l'administrateur : comptes, équipes, contremaîtres, prestations et motifs"]
 };
 
 document.querySelectorAll("[data-view]").forEach(btn => btn.addEventListener("click",()=>switchView(btn.dataset.view)));
@@ -223,7 +223,6 @@ document.querySelectorAll("[data-go]").forEach(btn => btn.addEventListener("clic
 document.getElementById("mobileMenu").addEventListener("click",()=>document.querySelector(".sidebar").classList.toggle("open"));
 
 function switchView(name){
-  if (name === "settings" && currentUser?.role !== "admin") return;
   document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
   document.getElementById(`view-${name}`).classList.add("active");
   document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===name));
