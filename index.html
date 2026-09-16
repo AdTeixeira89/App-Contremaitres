@@ -233,6 +233,26 @@ PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
           </div>
           <p class="small-note" id="statsCount"></p>
         </article>
+        <article class="panel">
+          <div class="panel-header wrap">
+            <div>
+              <h2>Historique rejets par équipe</h2>
+              <p>Nombre de rejets par équipe, dans le temps.</p>
+            </div>
+            <div class="filters">
+              <select id="statsHistGranularity">
+                <option value="semaine">Par semaine</option>
+                <option value="mois" selected>Par mois</option>
+                <option value="annee">Par année</option>
+              </select>
+              <select id="statsHistMode">
+                <option value="equipe" selected>Un graphique par équipe</option>
+                <option value="toutes">Toutes les équipes (comparaison)</option>
+              </select>
+            </div>
+          </div>
+        </article>
+        <div class="panel-grid" id="statsHistCharts"></div>
 
         <div class="panel-grid">
           <article class="panel">
@@ -346,6 +366,26 @@ Postes travaillés :
           </div>
           <p class="small-note" id="rendementStatsCount"></p>
         </article>
+        <article class="panel">
+          <div class="panel-header wrap">
+            <div>
+              <h2>Historique rendement par équipe</h2>
+              <p>Score total par équipe, dans le temps.</p>
+            </div>
+            <div class="filters">
+              <select id="rendementHistGranularity">
+                <option value="semaine">Par semaine</option>
+                <option value="mois" selected>Par mois</option>
+                <option value="annee">Par année</option>
+              </select>
+              <select id="rendementHistMode">
+                <option value="equipe" selected>Un graphique par équipe</option>
+                <option value="toutes">Toutes les équipes (comparaison)</option>
+              </select>
+            </div>
+          </div>
+        </article>
+        <div class="panel-grid" id="rendementHistCharts"></div>
         <div class="panel-grid">
           <article class="panel">
             <div class="panel-header"><h2>Rendements par CDT</h2></div>

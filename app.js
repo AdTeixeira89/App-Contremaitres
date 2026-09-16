@@ -288,7 +288,7 @@ document.getElementById("analyzeMessage").addEventListener("click",()=>{
   const prestation=state.prestations.find(p=>n.includes(normalize(p))) || state.prestations[0];
   const team=state.teams.find(t=>{
     const names=t.technicians.split(",").map(x=>normalize(x.trim()));
-    return names.some(name=>name && n.includes(name.split(" ")[0])) || n.includes(normalize(t.name));
+    return names.some(name=>name && name.split(" ").some(part=>part.length>1 && n.includes(part))) || n.includes(normalize(t.name));
   }) || state.teams[0];
   let reason=state.reasons.find(r=>n.includes(normalize(r)));
   if(!reason){
@@ -421,8 +421,9 @@ function renderStats(){
   renderBars("statsTeamChart", groupCount(rows,"equipe"));
   renderBars("statsZoneChart", groupCount(rows.map(r=>({zone:gdoZone(r.poste)})),"zone"));
   renderBars("statsMotifChart", groupCount(rows,"motif"));
+  renderTeamHistory(rows,"statsHistGranularity","statsHistMode","statsHistCharts",()=>1);
 }
-["statsFrom","statsTo","statsTeam","statsZone","statsMotif"].forEach(id=>document.getElementById(id).addEventListener("input", renderStats));
+["statsFrom","statsTo","statsTeam","statsZone","statsMotif","statsHistGranularity","statsHistMode"].forEach(id=>document.getElementById(id).addEventListener("input", renderStats));
 document.getElementById("statsReset").addEventListener("click", ()=>{
   ["statsFrom","statsTo"].forEach(id=>document.getElementById(id).value="");
   ["statsTeam","statsZone","statsMotif"].forEach(id=>document.getElementById(id).value="");
@@ -666,7 +667,7 @@ function parseRendementText(raw){
   const cdtNorm = normalize(cdt);
   const team = state.teams.find(t=>{
     const names=(t.technicians||"").split(",").map(x=>normalize(x.trim()));
-    return names.some(name=>name && cdtNorm.includes(name.split(" ")[0])) || cdtNorm.includes(normalize(t.name));
+    return names.some(name=>name && name.split(" ").some(part=>part.length>1 && cdtNorm.includes(part))) || cdtNorm.includes(normalize(t.name));
   });
   const values = {};
   state.rendementTasks.forEach(task=>{
@@ -887,14 +888,64 @@ function rendementStatsFiltered(){
     return true;
   });
 }
+function renderVBars(id,entries){
+  const el=document.getElementById(id);
+  if(!entries.length){el.className="vbar-chart empty-state";el.textContent="Aucune donnée";return;}
+  const max=Math.max(...entries.map(x=>x[1]),1);
+  el.className="vbar-chart";
+  el.innerHTML=entries.map(([label,val])=>`<div class="vbar-col"><strong>${val}</strong><div class="vbar-track"><div class="vbar-fill" style="height:${(val/max)*100}%"></div></div><span title="${escapeHtml(label)}">${escapeHtml(label)}</span></div>`).join("");
+}
+function periodKey(dateStr,gran){
+  const d=new Date(dateStr);
+  if(Number.isNaN(d.getTime()))return null;
+  if(gran==="annee")return {key:`${d.getFullYear()}`,label:`${d.getFullYear()}`};
+  if(gran==="semaine"){
+    const onejan=new Date(d.getFullYear(),0,1);
+    const week=Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);
+    const k=`${d.getFullYear()}-S${String(week).padStart(2,"0")}`;
+    return {key:k,label:`S${week} ${d.getFullYear()}`};
+  }
+  const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  const label=d.toLocaleDateString("fr-FR",{month:"short",year:"numeric"});
+  return {key:k,label};
+}
+function groupByPeriod(rows,gran,valueFn){
+  const map={};
+  rows.forEach(r=>{
+    const p=periodKey(r.date,gran);
+    if(!p)return;
+    if(!map[p.key])map[p.key]={label:p.label,total:0};
+    map[p.key].total+=valueFn(r);
+  });
+  return Object.keys(map).sort().map(k=>[map[k].label,map[k].total]);
+}
+function renderTeamHistory(rows,granId,modeId,containerId,valueFn){
+  const gran=document.getElementById(granId).value;
+  const mode=document.getElementById(modeId).value;
+  const container=document.getElementById(containerId);
+  const teams=[...new Set(rows.map(r=>r.equipe).filter(Boolean))].sort();
+  if(!teams.length){container.innerHTML=`<article class="panel"><div class="empty-state">Aucune donnée</div></article>`;return;}
+  if(mode==="toutes"){
+    const totals=teams.map(t=>[t,rows.filter(r=>r.equipe===t).reduce((s,r)=>s+valueFn(r),0)]);
+    container.innerHTML=`<article class="panel"><div class="panel-header"><h2>Comparaison des équipes</h2></div><div class="vbar-chart" id="${containerId}-combined"></div></article>`;
+    renderVBars(`${containerId}-combined`,totals);
+    return;
+  }
+  container.innerHTML=teams.map((t,i)=>`<article class="panel"><div class="panel-header"><h2>${escapeHtml(t)}</h2></div><div class="vbar-chart" id="${containerId}-team-${i}"></div></article>`).join("");
+  teams.forEach((t,i)=>renderVBars(`${containerId}-team-${i}`,groupByPeriod(rows.filter(r=>r.equipe===t),gran,valueFn)));
+}
+function renderRendementHistory(rows){
+  renderTeamHistory(rows,"rendementHistGranularity","rendementHistMode","rendementHistCharts",r=>Number(r.score)||0);
+}
 function renderRendementStats(){
   const rows = rendementStatsFiltered();
   document.getElementById("rendementStatsCount").textContent = `${rows.length} rendement${rows.length>1?"s":""} correspondant${rows.length>1?"s":""} aux filtres`;
   renderBars("rendementStatsCdtChart", groupCount(rows,"cdt"));
   renderBars("rendementStatsChantierChart", groupCount(rows,"chantier"));
   renderBars("rendementStatsAlertChart", groupCount(rows.filter(r=>r.belowThreshold),"cdt"));
+  renderRendementHistory(rows);
 }
-["rendementStatsFrom","rendementStatsTo","rendementStatsCdt","rendementStatsChantier"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
+["rendementStatsFrom","rendementStatsTo","rendementStatsCdt","rendementStatsChantier","rendementHistGranularity","rendementHistMode"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
 document.getElementById("rendementStatsReset").addEventListener("click", ()=>{
   ["rendementStatsFrom","rendementStatsTo"].forEach(id=>document.getElementById(id).value="");
   ["rendementStatsCdt","rendementStatsChantier"].forEach(id=>document.getElementById(id).value="");

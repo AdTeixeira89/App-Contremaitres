@@ -148,7 +148,7 @@ function parseSms(raw, settings) {
   const prestation = (settings.prestations || []).find(p => n.includes(normalize(p))) || "";
   const team = (settings.teams || []).find(t => {
     const names = (t.technicians || "").split(",").map(x => normalize(x.trim()));
-    return names.some(name => name && n.includes(name.split(" ")[0])) || n.includes(normalize(t.name));
+    return names.some(name => name && name.split(" ").some(part => part.length > 1 && n.includes(part))) || n.includes(normalize(t.name));
   });
   let motif = (settings.reasons || []).find(r => n.includes(normalize(r)));
   if (!motif) {
@@ -172,7 +172,7 @@ function parseRendement(raw, rendementSettings, generalSettings) {
   const cdtNorm = normalize(cdt);
   const team = (generalSettings.teams || []).find(t => {
     const names = (t.technicians || "").split(",").map(x => normalize(x.trim()));
-    return names.some(name => name && cdtNorm.includes(name.split(" ")[0])) || cdtNorm.includes(normalize(t.name));
+    return names.some(name => name && name.split(" ").some(part => part.length > 1 && cdtNorm.includes(part))) || cdtNorm.includes(normalize(t.name));
   });
   const tasks = rendementSettings.tasks || [];
   const values = {};
@@ -199,7 +199,23 @@ async function notifyCountermaster(cmName, settings, requestSummary) {
     tokens,
     notification: { title: "Nouvelle demande", body: requestSummary }
   });
-  return { notified: true, successCount: response.successCount, failureCount: response.failureCount };
+  const errors = [];
+  await Promise.all(response.responses.map((r, i) => {
+    if (r.success) return null;
+    errors.push(r.error?.code || "erreur inconnue");
+    // Jeton périmé (désinstallation, réinitialisation navigateur…) : on le retire
+    // pour ne pas retenter indéfiniment un envoi voué à l'échec.
+    if (r.error?.code === "messaging/registration-token-not-registered") {
+      return db.collection("users").doc(uid).collection("deviceTokens").doc(tokens[i]).delete().catch(() => {});
+    }
+    return null;
+  }));
+  return {
+    notified: response.successCount > 0,
+    successCount: response.successCount,
+    failureCount: response.failureCount,
+    reason: errors.length ? errors.join(", ") : undefined
+  };
 }
 
 // Point d'entrée pour l'application de transfert de SMS installée sur le
@@ -281,6 +297,7 @@ exports.receiveSms = onRequest({ invoker: "public" }, async (req, res) => {
         } catch (err) {
           logger.error("Échec d'envoi de la notification push (rendement)", err);
         }
+        logger.info("Notification CM (rendement)", { yieldAlertId: ref.id, cm: team.cm, notified: notifyResult.notified, reason: notifyResult.reason || null });
       }
 
       res.status(200).json({ ok: true, yieldAlertId: ref.id, attributed: !!team, belowThreshold, notified: notifyResult.notified });
@@ -316,6 +333,7 @@ exports.receiveSms = onRequest({ invoker: "public" }, async (req, res) => {
       } catch (err) {
         logger.error("Échec d'envoi de la notification push", err);
       }
+      logger.info("Notification CM (rejet)", { requestId: ref.id, cm: team.cm, notified: notifyResult.notified, reason: notifyResult.reason || null });
     }
 
     res.status(200).json({ ok: true, requestId: ref.id, attributed: !!team, notified: notifyResult.notified });
