@@ -199,7 +199,23 @@ async function notifyCountermaster(cmName, settings, requestSummary) {
     tokens,
     notification: { title: "Nouvelle demande", body: requestSummary }
   });
-  return { notified: true, successCount: response.successCount, failureCount: response.failureCount };
+  const errors = [];
+  await Promise.all(response.responses.map((r, i) => {
+    if (r.success) return null;
+    errors.push(r.error?.code || "erreur inconnue");
+    // Jeton périmé (désinstallation, réinitialisation navigateur…) : on le retire
+    // pour ne pas retenter indéfiniment un envoi voué à l'échec.
+    if (r.error?.code === "messaging/registration-token-not-registered") {
+      return db.collection("users").doc(uid).collection("deviceTokens").doc(tokens[i]).delete().catch(() => {});
+    }
+    return null;
+  }));
+  return {
+    notified: response.successCount > 0,
+    successCount: response.successCount,
+    failureCount: response.failureCount,
+    reason: errors.length ? errors.join(", ") : undefined
+  };
 }
 
 // Point d'entrée pour l'application de transfert de SMS installée sur le
