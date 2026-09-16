@@ -281,6 +281,7 @@ exports.receiveSms = onRequest({ invoker: "public" }, async (req, res) => {
         } catch (err) {
           logger.error("Échec d'envoi de la notification push (rendement)", err);
         }
+        logger.info("Notification CM (rendement)", { yieldAlertId: ref.id, cm: team.cm, notified: notifyResult.notified, reason: notifyResult.reason || null });
       }
 
       res.status(200).json({ ok: true, yieldAlertId: ref.id, attributed: !!team, belowThreshold, notified: notifyResult.notified });
@@ -316,6 +317,7 @@ exports.receiveSms = onRequest({ invoker: "public" }, async (req, res) => {
       } catch (err) {
         logger.error("Échec d'envoi de la notification push", err);
       }
+      logger.info("Notification CM (rejet)", { requestId: ref.id, cm: team.cm, notified: notifyResult.notified, reason: notifyResult.reason || null });
     }
 
     res.status(200).json({ ok: true, requestId: ref.id, attributed: !!team, notified: notifyResult.notified });
