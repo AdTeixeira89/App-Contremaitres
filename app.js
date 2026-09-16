@@ -421,8 +421,9 @@ function renderStats(){
   renderBars("statsTeamChart", groupCount(rows,"equipe"));
   renderBars("statsZoneChart", groupCount(rows.map(r=>({zone:gdoZone(r.poste)})),"zone"));
   renderBars("statsMotifChart", groupCount(rows,"motif"));
+  renderTeamHistory(rows,"statsHistGranularity","statsHistMode","statsHistCharts",()=>1);
 }
-["statsFrom","statsTo","statsTeam","statsZone","statsMotif"].forEach(id=>document.getElementById(id).addEventListener("input", renderStats));
+["statsFrom","statsTo","statsTeam","statsZone","statsMotif","statsHistGranularity","statsHistMode"].forEach(id=>document.getElementById(id).addEventListener("input", renderStats));
 document.getElementById("statsReset").addEventListener("click", ()=>{
   ["statsFrom","statsTo"].forEach(id=>document.getElementById(id).value="");
   ["statsTeam","statsZone","statsMotif"].forEach(id=>document.getElementById(id).value="");
@@ -894,7 +895,7 @@ function renderVBars(id,entries){
   el.className="vbar-chart";
   el.innerHTML=entries.map(([label,val])=>`<div class="vbar-col"><strong>${val}</strong><div class="vbar-track"><div class="vbar-fill" style="height:${(val/max)*100}%"></div></div><span title="${escapeHtml(label)}">${escapeHtml(label)}</span></div>`).join("");
 }
-function rendementPeriodKey(dateStr,gran){
+function periodKey(dateStr,gran){
   const d=new Date(dateStr);
   if(Number.isNaN(d.getTime()))return null;
   if(gran==="annee")return {key:`${d.getFullYear()}`,label:`${d.getFullYear()}`};
@@ -908,30 +909,33 @@ function rendementPeriodKey(dateStr,gran){
   const label=d.toLocaleDateString("fr-FR",{month:"short",year:"numeric"});
   return {key:k,label};
 }
-function groupSumByPeriod(rows,gran){
+function groupByPeriod(rows,gran,valueFn){
   const map={};
   rows.forEach(r=>{
-    const p=rendementPeriodKey(r.date,gran);
+    const p=periodKey(r.date,gran);
     if(!p)return;
     if(!map[p.key])map[p.key]={label:p.label,total:0};
-    map[p.key].total+=Number(r.score)||0;
+    map[p.key].total+=valueFn(r);
   });
   return Object.keys(map).sort().map(k=>[map[k].label,map[k].total]);
 }
-function renderRendementHistory(rows){
-  const gran=document.getElementById("rendementHistGranularity").value;
-  const mode=document.getElementById("rendementHistMode").value;
-  const container=document.getElementById("rendementHistCharts");
+function renderTeamHistory(rows,granId,modeId,containerId,valueFn){
+  const gran=document.getElementById(granId).value;
+  const mode=document.getElementById(modeId).value;
+  const container=document.getElementById(containerId);
   const teams=[...new Set(rows.map(r=>r.equipe).filter(Boolean))].sort();
   if(!teams.length){container.innerHTML=`<article class="panel"><div class="empty-state">Aucune donnée</div></article>`;return;}
   if(mode==="toutes"){
-    const totals=teams.map(t=>[t,rows.filter(r=>r.equipe===t).reduce((s,r)=>s+(Number(r.score)||0),0)]);
-    container.innerHTML=`<article class="panel"><div class="panel-header"><h2>Comparaison des équipes</h2></div><div class="vbar-chart" id="rendementHistCombined"></div></article>`;
-    renderVBars("rendementHistCombined",totals);
+    const totals=teams.map(t=>[t,rows.filter(r=>r.equipe===t).reduce((s,r)=>s+valueFn(r),0)]);
+    container.innerHTML=`<article class="panel"><div class="panel-header"><h2>Comparaison des équipes</h2></div><div class="vbar-chart" id="${containerId}-combined"></div></article>`;
+    renderVBars(`${containerId}-combined`,totals);
     return;
   }
-  container.innerHTML=teams.map((t,i)=>`<article class="panel"><div class="panel-header"><h2>${escapeHtml(t)}</h2></div><div class="vbar-chart" id="rendementHistTeam-${i}"></div></article>`).join("");
-  teams.forEach((t,i)=>renderVBars(`rendementHistTeam-${i}`,groupSumByPeriod(rows.filter(r=>r.equipe===t),gran)));
+  container.innerHTML=teams.map((t,i)=>`<article class="panel"><div class="panel-header"><h2>${escapeHtml(t)}</h2></div><div class="vbar-chart" id="${containerId}-team-${i}"></div></article>`).join("");
+  teams.forEach((t,i)=>renderVBars(`${containerId}-team-${i}`,groupByPeriod(rows.filter(r=>r.equipe===t),gran,valueFn)));
+}
+function renderRendementHistory(rows){
+  renderTeamHistory(rows,"rendementHistGranularity","rendementHistMode","rendementHistCharts",r=>Number(r.score)||0);
 }
 function renderRendementStats(){
   const rows = rendementStatsFiltered();
