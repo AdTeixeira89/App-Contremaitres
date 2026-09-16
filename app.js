@@ -887,14 +887,61 @@ function rendementStatsFiltered(){
     return true;
   });
 }
+function renderVBars(id,entries){
+  const el=document.getElementById(id);
+  if(!entries.length){el.className="vbar-chart empty-state";el.textContent="Aucune donnée";return;}
+  const max=Math.max(...entries.map(x=>x[1]),1);
+  el.className="vbar-chart";
+  el.innerHTML=entries.map(([label,val])=>`<div class="vbar-col"><strong>${val}</strong><div class="vbar-track"><div class="vbar-fill" style="height:${(val/max)*100}%"></div></div><span title="${escapeHtml(label)}">${escapeHtml(label)}</span></div>`).join("");
+}
+function rendementPeriodKey(dateStr,gran){
+  const d=new Date(dateStr);
+  if(Number.isNaN(d.getTime()))return null;
+  if(gran==="annee")return {key:`${d.getFullYear()}`,label:`${d.getFullYear()}`};
+  if(gran==="semaine"){
+    const onejan=new Date(d.getFullYear(),0,1);
+    const week=Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);
+    const k=`${d.getFullYear()}-S${String(week).padStart(2,"0")}`;
+    return {key:k,label:`S${week} ${d.getFullYear()}`};
+  }
+  const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  const label=d.toLocaleDateString("fr-FR",{month:"short",year:"numeric"});
+  return {key:k,label};
+}
+function groupSumByPeriod(rows,gran){
+  const map={};
+  rows.forEach(r=>{
+    const p=rendementPeriodKey(r.date,gran);
+    if(!p)return;
+    if(!map[p.key])map[p.key]={label:p.label,total:0};
+    map[p.key].total+=Number(r.score)||0;
+  });
+  return Object.keys(map).sort().map(k=>[map[k].label,map[k].total]);
+}
+function renderRendementHistory(rows){
+  const gran=document.getElementById("rendementHistGranularity").value;
+  const mode=document.getElementById("rendementHistMode").value;
+  const container=document.getElementById("rendementHistCharts");
+  const teams=[...new Set(rows.map(r=>r.equipe).filter(Boolean))].sort();
+  if(!teams.length){container.innerHTML=`<article class="panel"><div class="empty-state">Aucune donnée</div></article>`;return;}
+  if(mode==="toutes"){
+    const totals=teams.map(t=>[t,rows.filter(r=>r.equipe===t).reduce((s,r)=>s+(Number(r.score)||0),0)]);
+    container.innerHTML=`<article class="panel"><div class="panel-header"><h2>Comparaison des équipes</h2></div><div class="vbar-chart" id="rendementHistCombined"></div></article>`;
+    renderVBars("rendementHistCombined",totals);
+    return;
+  }
+  container.innerHTML=teams.map((t,i)=>`<article class="panel"><div class="panel-header"><h2>${escapeHtml(t)}</h2></div><div class="vbar-chart" id="rendementHistTeam-${i}"></div></article>`).join("");
+  teams.forEach((t,i)=>renderVBars(`rendementHistTeam-${i}`,groupSumByPeriod(rows.filter(r=>r.equipe===t),gran)));
+}
 function renderRendementStats(){
   const rows = rendementStatsFiltered();
   document.getElementById("rendementStatsCount").textContent = `${rows.length} rendement${rows.length>1?"s":""} correspondant${rows.length>1?"s":""} aux filtres`;
   renderBars("rendementStatsCdtChart", groupCount(rows,"cdt"));
   renderBars("rendementStatsChantierChart", groupCount(rows,"chantier"));
   renderBars("rendementStatsAlertChart", groupCount(rows.filter(r=>r.belowThreshold),"cdt"));
+  renderRendementHistory(rows);
 }
-["rendementStatsFrom","rendementStatsTo","rendementStatsCdt","rendementStatsChantier"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
+["rendementStatsFrom","rendementStatsTo","rendementStatsCdt","rendementStatsChantier","rendementHistGranularity","rendementHistMode"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
 document.getElementById("rendementStatsReset").addEventListener("click", ()=>{
   ["rendementStatsFrom","rendementStatsTo"].forEach(id=>document.getElementById(id).value="");
   ["rendementStatsCdt","rendementStatsChantier"].forEach(id=>document.getElementById(id).value="");
