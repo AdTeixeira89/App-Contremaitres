@@ -1,11 +1,11 @@
 import {
-  collection, doc, addDoc, setDoc, updateDoc, onSnapshot,
+  collection, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot,
   query, orderBy, limit, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 import {
-  getMessaging, isSupported as messagingIsSupported, getToken
+  getMessaging, isSupported as messagingIsSupported, getToken, deleteToken
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging.js";
 import { db, functions, storage, firebaseApp } from "./firebase-init.js";
 import { VAPID_KEY, firebaseConfig, FUNCTIONS_REGION } from "./firebase-config.js";
@@ -1054,6 +1054,24 @@ document.getElementById("enableNotifications").addEventListener("click", async (
     statusEl.textContent = "Notifications activées sur cet appareil.";
   } catch(err) {
     statusEl.textContent = "Erreur : " + (err.message || "impossible d'activer les notifications.");
+  }
+  btn.disabled = false;
+});
+
+document.getElementById("disableNotifications").addEventListener("click", async () => {
+  const btn = document.getElementById("disableNotifications");
+  const statusEl = document.getElementById("notificationsStatus");
+  btn.disabled = true;
+  try {
+    if(!(await messagingIsSupported())) throw new Error("Les notifications ne sont pas prises en charge par ce navigateur.");
+    const swReg = await navigator.serviceWorker.getRegistration("firebase-messaging-sw.js");
+    const messaging = getMessaging(firebaseApp);
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg || undefined }).catch(() => null);
+    if(token) await deleteDoc(doc(db, "users", currentUser.uid, "deviceTokens", token));
+    await deleteToken(messaging).catch(() => {});
+    statusEl.textContent = "Notifications désactivées sur cet appareil.";
+  } catch(err) {
+    statusEl.textContent = "Erreur : " + (err.message || "impossible de désactiver les notifications.");
   }
   btn.disabled = false;
 });
