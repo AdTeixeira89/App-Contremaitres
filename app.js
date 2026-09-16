@@ -1,11 +1,11 @@
 import {
-  collection, doc, addDoc, setDoc, updateDoc, onSnapshot,
+  collection, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot,
   query, orderBy, limit, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 import {
-  getMessaging, isSupported as messagingIsSupported, getToken
+  getMessaging, isSupported as messagingIsSupported, getToken, deleteToken
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging.js";
 import { db, functions, storage, firebaseApp } from "./firebase-init.js";
 import { VAPID_KEY, firebaseConfig, FUNCTIONS_REGION } from "./firebase-config.js";
@@ -934,7 +934,7 @@ function renderTeamHistory(rows,granId,modeId,containerId,valueFn){
   container.innerHTML=teams.map((t,i)=>`<article class="panel"><div class="panel-header"><h2>${escapeHtml(t)}</h2></div><div class="vbar-chart" id="${containerId}-team-${i}"></div></article>`).join("");
   teams.forEach((t,i)=>renderVBars(`${containerId}-team-${i}`,groupByPeriod(rows.filter(r=>r.equipe===t),gran,valueFn)));
 }
-function renderRendementHistory(rows){
+function renderRendementTeamHistory(rows){
   renderTeamHistory(rows,"rendementHistGranularity","rendementHistMode","rendementHistCharts",r=>Number(r.score)||0);
 }
 function renderRendementStats(){
@@ -943,7 +943,7 @@ function renderRendementStats(){
   renderBars("rendementStatsCdtChart", groupCount(rows,"cdt"));
   renderBars("rendementStatsChantierChart", groupCount(rows,"chantier"));
   renderBars("rendementStatsAlertChart", groupCount(rows.filter(r=>r.belowThreshold),"cdt"));
-  renderRendementHistory(rows);
+  renderRendementTeamHistory(rows);
 }
 ["rendementStatsFrom","rendementStatsTo","rendementStatsCdt","rendementStatsChantier","rendementHistGranularity","rendementHistMode"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
 document.getElementById("rendementStatsReset").addEventListener("click", ()=>{
@@ -1054,6 +1054,24 @@ document.getElementById("enableNotifications").addEventListener("click", async (
     statusEl.textContent = "Notifications activées sur cet appareil.";
   } catch(err) {
     statusEl.textContent = "Erreur : " + (err.message || "impossible d'activer les notifications.");
+  }
+  btn.disabled = false;
+});
+
+document.getElementById("disableNotifications").addEventListener("click", async () => {
+  const btn = document.getElementById("disableNotifications");
+  const statusEl = document.getElementById("notificationsStatus");
+  btn.disabled = true;
+  try {
+    if(!(await messagingIsSupported())) throw new Error("Les notifications ne sont pas prises en charge par ce navigateur.");
+    const swReg = await navigator.serviceWorker.getRegistration("firebase-messaging-sw.js");
+    const messaging = getMessaging(firebaseApp);
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg || undefined }).catch(() => null);
+    if(token) await deleteDoc(doc(db, "users", currentUser.uid, "deviceTokens", token));
+    await deleteToken(messaging).catch(() => {});
+    statusEl.textContent = "Notifications désactivées sur cet appareil.";
+  } catch(err) {
+    statusEl.textContent = "Erreur : " + (err.message || "impossible de désactiver les notifications.");
   }
   btn.disabled = false;
 });
