@@ -288,7 +288,7 @@ document.getElementById("analyzeMessage").addEventListener("click",()=>{
   const prestation=state.prestations.find(p=>n.includes(normalize(p))) || state.prestations[0];
   const team=state.teams.find(t=>{
     const names=t.technicians.split(",").map(x=>normalize(x.trim()));
-    return names.some(name=>name && n.includes(name.split(" ")[0])) || n.includes(normalize(t.name));
+    return names.some(name=>name && name.split(" ").some(part=>part.length>1 && n.includes(part))) || n.includes(normalize(t.name));
   }) || state.teams[0];
   let reason=state.reasons.find(r=>n.includes(normalize(r)));
   if(!reason){
@@ -666,7 +666,7 @@ function parseRendementText(raw){
   const cdtNorm = normalize(cdt);
   const team = state.teams.find(t=>{
     const names=(t.technicians||"").split(",").map(x=>normalize(x.trim()));
-    return names.some(name=>name && cdtNorm.includes(name.split(" ")[0])) || cdtNorm.includes(normalize(t.name));
+    return names.some(name=>name && name.split(" ").some(part=>part.length>1 && cdtNorm.includes(part))) || cdtNorm.includes(normalize(t.name));
   });
   const values = {};
   state.rendementTasks.forEach(task=>{
