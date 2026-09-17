@@ -587,7 +587,7 @@ function renderHistory(){
 function renderSettings(){
   if (currentUser?.role !== "admin") return;
   document.getElementById("cmSettings").innerHTML=state.countermasters.map((c,i)=>`<div class="setting-row cm"><input class="cm-name" data-i="${i}" value="${escapeHtml(c.name)}" placeholder="Nom"><input class="cm-email" data-i="${i}" value="${escapeHtml(c.email||"")}" type="email" placeholder="Email du compte lié"><button class="danger-button delete-cm" data-i="${i}">×</button></div>`).join("");
-  document.getElementById("teamSettings").innerHTML=state.teams.map((t,i)=>`<div class="setting-row team"><input class="team-name" data-i="${i}" value="${escapeHtml(t.name)}"><select class="team-cm" data-i="${i}">${state.countermasters.map(c=>`<option ${c.name===t.cm?"selected":""}>${escapeHtml(c.name)}</option>`).join("")}</select><select class="team-depot" data-i="${i}"><option value="">Dépôt</option>${["14","37","47"].map(d=>`<option ${t.depot===d?"selected":""}>${d}</option>`).join("")}</select><button class="danger-button delete-team" data-i="${i}">×</button></div>`).join("");
+  document.getElementById("teamSettings").innerHTML=state.teams.map((t,i)=>`<div class="setting-row team"><input class="team-name" data-i="${i}" value="${escapeHtml(t.name)}"><select class="team-cm" data-i="${i}">${state.countermasters.map(c=>`<option ${c.name===t.cm?"selected":""}>${escapeHtml(c.name)}</option>`).join("")}</select><select class="team-prestation" data-i="${i}"><option value="">Prestation</option>${state.prestations.map(p=>`<option ${t.prestation===p?"selected":""}>${escapeHtml(p)}</option>`).join("")}</select><select class="team-depot" data-i="${i}"><option value="">Dépôt</option>${["14","37","47"].map(d=>`<option ${t.depot===d?"selected":""}>${d}</option>`).join("")}</select><button class="danger-button delete-team" data-i="${i}">×</button></div>`).join("");
   document.getElementById("prestationSettings").innerHTML=state.prestations.map((p,i)=>`<div class="setting-row"><input class="prestation-name" data-i="${i}" value="${escapeHtml(p)}"><button class="danger-button delete-prestation" data-i="${i}">×</button></div>`).join("");
   document.getElementById("reasonSettings").innerHTML=state.reasons.map((p,i)=>`<div class="setting-row"><input class="reason-name" data-i="${i}" value="${escapeHtml(p)}"><button class="danger-button delete-reason" data-i="${i}">×</button></div>`).join("");
   bindSettings();
@@ -597,13 +597,14 @@ function bindSettings(){
   document.querySelectorAll(".cm-email").forEach(x=>x.addEventListener("change",()=>{state.countermasters[x.dataset.i].email=x.value.trim();saveSettings()}));
   document.querySelectorAll(".team-name").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].name=x.value;saveSettings()}));
   document.querySelectorAll(".team-cm").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].cm=x.value;saveSettings()}));
+  document.querySelectorAll(".team-prestation").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].prestation=x.value;saveSettings()}));
   document.querySelectorAll(".team-depot").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].depot=x.value;saveSettings()}));
-  document.querySelectorAll(".prestation-name").forEach(x=>x.addEventListener("change",()=>{state.prestations[x.dataset.i]=x.value;saveSettings()}));
+  document.querySelectorAll(".prestation-name").forEach(x=>x.addEventListener("change",()=>{const old=state.prestations[x.dataset.i];state.prestations[x.dataset.i]=x.value;state.teams.forEach(t=>{if(t.prestation===old)t.prestation=x.value});saveSettings()}));
   document.querySelectorAll(".reason-name").forEach(x=>x.addEventListener("change",()=>{state.reasons[x.dataset.i]=x.value;saveSettings()}));
   [[".delete-cm","countermasters"],[".delete-team","teams"],[".delete-prestation","prestations"],[".delete-reason","reasons"]].forEach(([sel,key])=>document.querySelectorAll(sel).forEach(x=>x.addEventListener("click",()=>{state[key].splice(Number(x.dataset.i),1);saveSettings()})));
 }
 document.getElementById("addCM").addEventListener("click",()=>{state.countermasters.push({id:crypto.randomUUID(),name:"Nouveau contremaître",email:"",notifications:true});saveSettings()});
-document.getElementById("addTeam").addEventListener("click",()=>{state.teams.push({id:crypto.randomUUID(),name:"Nouvelle équipe",technicians:"",cm:state.countermasters[0]?.name||"",depot:""});saveSettings()});
+document.getElementById("addTeam").addEventListener("click",()=>{state.teams.push({id:crypto.randomUUID(),name:"Nouvelle équipe",technicians:"",cm:state.countermasters[0]?.name||"",prestation:"",depot:""});saveSettings()});
 document.getElementById("addPrestation").addEventListener("click",()=>{state.prestations.push("Nouvelle prestation");saveSettings()});
 document.getElementById("addReason").addEventListener("click",()=>{state.reasons.push("Nouveau motif");saveSettings()});
 
