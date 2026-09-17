@@ -807,8 +807,8 @@ document.getElementById("rendementForm").addEventListener("submit", async e=>{
 
 function rendementTable(rows, actions=true){
   if(!rows.length) return `<div class="empty-state">Aucun rendement</div>`;
-  return `<table class="data-table"><thead><tr><th>Chantier</th><th>CDT</th><th>Équipe</th><th>Contremaître</th><th>Score/Seuil</th><th>Statut</th><th>Date</th>${actions?"<th></th>":""}</tr></thead><tbody>
-  ${rows.map(r=>`<tr><td data-label="Chantier"><strong>${escapeHtml(r.chantier||"—")}</strong></td><td data-label="CDT">${escapeHtml(r.cdt||"—")}</td><td data-label="Équipe">${escapeHtml(r.equipe)}</td><td data-label="Contremaître">${escapeHtml(r.cm)}</td><td data-label="Score/Seuil">${r.score}/${r.threshold}${r.belowThreshold?` <span class="badge todo">Alerte</span>`:""}</td><td data-label="Statut"><span class="badge ${statusClass(r.status)}">${escapeHtml(r.status)}</span></td><td data-label="Date">${fmtDate(r.date)}</td>${actions?`<td class="table-action"><button class="link-button open-rendement" data-id="${r.id}">Ouvrir</button></td>`:""}</tr>`).join("")}
+  return `<table class="data-table"><thead><tr><th>Chantier</th><th>CDT</th><th>Contremaître</th><th>Score/Seuil</th><th>Statut</th><th>Date</th>${actions?"<th></th>":""}</tr></thead><tbody>
+  ${rows.map(r=>`<tr><td data-label="Chantier"><strong>${escapeHtml(r.chantier||"—")}</strong></td><td data-label="CDT">${escapeHtml(r.cdt||"—")}</td><td data-label="Contremaître">${escapeHtml(r.cm)}</td><td data-label="Score/Seuil">${r.score}/${r.threshold}${r.belowThreshold?` <span class="badge todo">Alerte</span>`:""}</td><td data-label="Statut"><span class="badge ${statusClass(r.status)}">${escapeHtml(r.status)}</span></td><td data-label="Date">${fmtDate(r.date)}</td>${actions?`<td class="table-action"><button class="link-button open-rendement" data-id="${r.id}">Ouvrir</button></td>`:""}</tr>`).join("")}
   </tbody></table>`;
 }
 function renderRendementList(){
