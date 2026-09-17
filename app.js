@@ -840,7 +840,7 @@ function yieldAlertHistoryHtml(alertId){
 function openYieldAlert(id){
   const r=state.yieldAlerts.find(x=>x.id===id); if(!r)return;
   const d=document.getElementById("requestDialog");
-  const taskDetails = state.rendementTasks.map(t=>`<div class="detail-box"><span>${escapeHtml(t.label)}</span><strong>${r.tasks?.[t.id]??0} × ${t.points}</strong></div>`).join("");
+  const taskDetails = state.rendementTasks.map(t=>`<div class="detail-box"><span>${escapeHtml(t.label)}</span><strong>${r.tasks?.[t.id]??0}</strong></div>`).join("");
   const label = `Chantier ${r.chantier||"—"} — ${r.cdt||"—"}`;
   document.getElementById("dialogContent").innerHTML=`
     <h2>${escapeHtml(label)}</h2>
