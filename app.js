@@ -242,13 +242,13 @@ async function logHistory(requestId, text) {
 const titles = {
   dashboard:["Tableau de bord","Vue globale des demandes et des traitements"],
   new:["Nouveau message","Coller et analyser un SMS reçu"],
-  requests:["Demandes à traiter","Suivi partagé entre les contremaîtres"],
+  requests:["Alertes","Suivi partagé entre les contremaîtres"],
   history:["Historique","Traçabilité de toutes les actions"],
-  stats:["Statistiques","Analyser les rejets par équipe, zone et motif"],
+  stats:["Statistiques","Analyser les rejets par équipe et par motif"],
   "rendement-new":["Nouveau rendement","Coller et analyser un SMS de rendement"],
   "rendement-list":["Alertes rendement","Suivi partagé entre les contremaîtres"],
   "rendement-history":["Historique rendement","Traçabilité de toutes les actions"],
-  "rendement-stats":["Statistiques rendement","Analyser les rendements par CDT et par chantier"],
+  "rendement-stats":["Statistiques rendement","Analyser les rendements par CDT"],
   settings:["Réglages","Notifications, et pour l'administrateur : comptes, équipes, contremaîtres, prestations et motifs"]
 };
 
@@ -265,7 +265,9 @@ function switchView(name){
   document.querySelector(".sidebar").classList.remove("open");
   if(name==="new") hydrateFormOptions();
   if(name==="rendement-new"){ hydrateRendementFormOptions(); renderRendementTaskFieldsInputs(); }
+  if(name!=="rendement-list") document.getElementById("rendementBackToStats").hidden=true;
 }
+document.getElementById("rendementBackToStats").addEventListener("click",()=>switchView("rendement-stats"));
 
 function hydrateFormOptions(){
   const fill=(id,items)=>document.getElementById(id).innerHTML=items.map(x=>`<option>${escapeHtml(x)}</option>`).join("");
@@ -284,6 +286,7 @@ document.getElementById("analyzeMessage").addEventListener("click",()=>{
   const raw=document.getElementById("rawMessage").value.trim();
   if(!raw) return toast("Collez d’abord un message.");
   const n=normalize(raw);
+  if(n.includes("RENDEMENT")) return toast("Ce message est un rendement, pas un rejet : utilisez « Nouveau » dans la section Rendement.");
   const poste=(raw.match(/\b\d{5}P\d{3,5}\b/i)||raw.match(/\b[A-Z0-9]{8,14}\b/i)||[""])[0];
   const prestation=state.prestations.find(p=>n.includes(normalize(p))) || state.prestations[0];
   const team=state.teams.find(t=>{
@@ -381,6 +384,7 @@ function renderRendementCdtList(rows){
   el.innerHTML=cdts.map(c=>`<button type="button" class="cdt-chip" data-cdt="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("");
   el.querySelectorAll(".cdt-chip").forEach(b=>b.addEventListener("click",()=>{
     switchView("rendement-list");
+    document.getElementById("rendementBackToStats").hidden=false;
     document.getElementById("rendementFilterSearch").value=b.dataset.cdt;
     renderRendementList();
   }));
@@ -434,7 +438,6 @@ function renderStats(){
   const rows = statsFilteredRequests();
   document.getElementById("statsCount").textContent = `${rows.length} rejet${rows.length>1?"s":""} correspondant${rows.length>1?"s":""} aux filtres`;
   renderBars("statsTeamChart", groupCount(rows,"equipe"));
-  renderBars("statsZoneChart", groupCount(rows.map(r=>({zone:gdoZone(r.poste)})),"zone"));
   renderBars("statsMotifChart", groupCount(rows,"motif"));
   renderTeamHistory(rows,"statsHistGranularity","statsHistMode","statsHistCharts",()=>1);
 }
@@ -584,7 +587,7 @@ function renderHistory(){
 function renderSettings(){
   if (currentUser?.role !== "admin") return;
   document.getElementById("cmSettings").innerHTML=state.countermasters.map((c,i)=>`<div class="setting-row cm"><input class="cm-name" data-i="${i}" value="${escapeHtml(c.name)}" placeholder="Nom"><input class="cm-email" data-i="${i}" value="${escapeHtml(c.email||"")}" type="email" placeholder="Email du compte lié"><button class="danger-button delete-cm" data-i="${i}">×</button></div>`).join("");
-  document.getElementById("teamSettings").innerHTML=state.teams.map((t,i)=>`<div class="setting-row team"><input class="team-name" data-i="${i}" value="${escapeHtml(t.name)}"><select class="team-cm" data-i="${i}">${state.countermasters.map(c=>`<option ${c.name===t.cm?"selected":""}>${escapeHtml(c.name)}</option>`).join("")}</select><select class="team-depot" data-i="${i}"><option value="">Dépôt</option>${["14","37","47"].map(d=>`<option ${t.depot===d?"selected":""}>${d}</option>`).join("")}</select><button class="danger-button delete-team" data-i="${i}">×</button></div>`).join("");
+  document.getElementById("teamSettings").innerHTML=state.teams.map((t,i)=>`<div class="setting-row team"><input class="team-name" data-i="${i}" value="${escapeHtml(t.name)}"><select class="team-cm" data-i="${i}">${state.countermasters.map(c=>`<option ${c.name===t.cm?"selected":""}>${escapeHtml(c.name)}</option>`).join("")}</select><select class="team-prestation" data-i="${i}"><option value="">Prestation</option>${state.prestations.map(p=>`<option ${t.prestation===p?"selected":""}>${escapeHtml(p)}</option>`).join("")}</select><select class="team-depot" data-i="${i}"><option value="">Dépôt</option>${["14","37","47"].map(d=>`<option ${t.depot===d?"selected":""}>${d}</option>`).join("")}</select><button class="danger-button delete-team" data-i="${i}">×</button></div>`).join("");
   document.getElementById("prestationSettings").innerHTML=state.prestations.map((p,i)=>`<div class="setting-row"><input class="prestation-name" data-i="${i}" value="${escapeHtml(p)}"><button class="danger-button delete-prestation" data-i="${i}">×</button></div>`).join("");
   document.getElementById("reasonSettings").innerHTML=state.reasons.map((p,i)=>`<div class="setting-row"><input class="reason-name" data-i="${i}" value="${escapeHtml(p)}"><button class="danger-button delete-reason" data-i="${i}">×</button></div>`).join("");
   bindSettings();
@@ -594,13 +597,14 @@ function bindSettings(){
   document.querySelectorAll(".cm-email").forEach(x=>x.addEventListener("change",()=>{state.countermasters[x.dataset.i].email=x.value.trim();saveSettings()}));
   document.querySelectorAll(".team-name").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].name=x.value;saveSettings()}));
   document.querySelectorAll(".team-cm").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].cm=x.value;saveSettings()}));
+  document.querySelectorAll(".team-prestation").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].prestation=x.value;saveSettings()}));
   document.querySelectorAll(".team-depot").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].depot=x.value;saveSettings()}));
-  document.querySelectorAll(".prestation-name").forEach(x=>x.addEventListener("change",()=>{state.prestations[x.dataset.i]=x.value;saveSettings()}));
+  document.querySelectorAll(".prestation-name").forEach(x=>x.addEventListener("change",()=>{const old=state.prestations[x.dataset.i];state.prestations[x.dataset.i]=x.value;state.teams.forEach(t=>{if(t.prestation===old)t.prestation=x.value});saveSettings()}));
   document.querySelectorAll(".reason-name").forEach(x=>x.addEventListener("change",()=>{state.reasons[x.dataset.i]=x.value;saveSettings()}));
   [[".delete-cm","countermasters"],[".delete-team","teams"],[".delete-prestation","prestations"],[".delete-reason","reasons"]].forEach(([sel,key])=>document.querySelectorAll(sel).forEach(x=>x.addEventListener("click",()=>{state[key].splice(Number(x.dataset.i),1);saveSettings()})));
 }
 document.getElementById("addCM").addEventListener("click",()=>{state.countermasters.push({id:crypto.randomUUID(),name:"Nouveau contremaître",email:"",notifications:true});saveSettings()});
-document.getElementById("addTeam").addEventListener("click",()=>{state.teams.push({id:crypto.randomUUID(),name:"Nouvelle équipe",technicians:"",cm:state.countermasters[0]?.name||"",depot:""});saveSettings()});
+document.getElementById("addTeam").addEventListener("click",()=>{state.teams.push({id:crypto.randomUUID(),name:"Nouvelle équipe",technicians:"",cm:state.countermasters[0]?.name||"",prestation:"",depot:""});saveSettings()});
 document.getElementById("addPrestation").addEventListener("click",()=>{state.prestations.push("Nouvelle prestation");saveSettings()});
 document.getElementById("addReason").addEventListener("click",()=>{state.reasons.push("Nouveau motif");saveSettings()});
 
@@ -803,8 +807,8 @@ document.getElementById("rendementForm").addEventListener("submit", async e=>{
 
 function rendementTable(rows, actions=true){
   if(!rows.length) return `<div class="empty-state">Aucun rendement</div>`;
-  return `<table class="data-table"><thead><tr><th>Chantier</th><th>CDT</th><th>Équipe</th><th>Contremaître</th><th>Score/Seuil</th><th>Statut</th><th>Date</th>${actions?"<th></th>":""}</tr></thead><tbody>
-  ${rows.map(r=>`<tr><td data-label="Chantier"><strong>${escapeHtml(r.chantier||"—")}</strong></td><td data-label="CDT">${escapeHtml(r.cdt||"—")}</td><td data-label="Équipe">${escapeHtml(r.equipe)}</td><td data-label="Contremaître">${escapeHtml(r.cm)}</td><td data-label="Score/Seuil">${r.score}/${r.threshold}${r.belowThreshold?` <span class="badge todo">Alerte</span>`:""}</td><td data-label="Statut"><span class="badge ${statusClass(r.status)}">${escapeHtml(r.status)}</span></td><td data-label="Date">${fmtDate(r.date)}</td>${actions?`<td class="table-action"><button class="link-button open-rendement" data-id="${r.id}">Ouvrir</button></td>`:""}</tr>`).join("")}
+  return `<table class="data-table"><thead><tr><th>Chantier</th><th>CDT</th><th>Contremaître</th><th>Score/Seuil</th><th>Statut</th><th>Date</th>${actions?"<th></th>":""}</tr></thead><tbody>
+  ${rows.map(r=>`<tr><td data-label="Chantier"><strong>${escapeHtml(r.chantier||"—")}</strong></td><td data-label="CDT">${escapeHtml(r.cdt||"—")}</td><td data-label="Contremaître">${escapeHtml(r.cm)}</td><td data-label="Score/Seuil">${r.score}/${r.threshold}${r.belowThreshold?` <span class="badge todo">Alerte</span>`:""}</td><td data-label="Statut"><span class="badge ${statusClass(r.status)}">${escapeHtml(r.status)}</span></td><td data-label="Date">${fmtDate(r.date)}</td>${actions?`<td class="table-action"><button class="link-button open-rendement" data-id="${r.id}">Ouvrir</button></td>`:""}</tr>`).join("")}
   </tbody></table>`;
 }
 function renderRendementList(){
@@ -836,7 +840,7 @@ function yieldAlertHistoryHtml(alertId){
 function openYieldAlert(id){
   const r=state.yieldAlerts.find(x=>x.id===id); if(!r)return;
   const d=document.getElementById("requestDialog");
-  const taskDetails = state.rendementTasks.map(t=>`<div class="detail-box"><span>${escapeHtml(t.label)}</span><strong>${r.tasks?.[t.id]??0} × ${t.points}</strong></div>`).join("");
+  const taskDetails = state.rendementTasks.map(t=>`<div class="detail-box"><span>${escapeHtml(t.label)}</span><strong>${r.tasks?.[t.id]??0}</strong></div>`).join("");
   const label = `Chantier ${r.chantier||"—"} — ${r.cdt||"—"}`;
   document.getElementById("dialogContent").innerHTML=`
     <h2>${escapeHtml(label)}</h2>
@@ -947,8 +951,24 @@ function renderTeamHistory(rows,granId,modeId,containerId,valueFn){
     renderVBars(`${containerId}-combined`,totals);
     return;
   }
-  container.innerHTML=teams.map((t,i)=>`<article class="panel"><div class="panel-header"><h2>${escapeHtml(t)}</h2></div><div class="vbar-chart" id="${containerId}-team-${i}"></div></article>`).join("");
-  teams.forEach((t,i)=>renderVBars(`${containerId}-team-${i}`,groupByPeriod(rows.filter(r=>r.equipe===t),gran,valueFn)));
+  container.innerHTML=`<article class="panel"><div class="panel-header"><h2>Historique par équipe</h2></div><div class="cdt-list" id="${containerId}-list"></div><div id="${containerId}-chart" class="vbar-chart" style="margin-top:16px" hidden></div></article>`;
+  const listEl=document.getElementById(`${containerId}-list`);
+  const chartEl=document.getElementById(`${containerId}-chart`);
+  listEl.innerHTML=teams.map(t=>`<button type="button" class="cdt-chip" data-team="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join("");
+  let selected=null;
+  listEl.querySelectorAll(".cdt-chip").forEach(b=>b.addEventListener("click",()=>{
+    const t=b.dataset.team;
+    if(selected===t){
+      selected=null;
+      chartEl.hidden=true;
+      listEl.querySelectorAll(".cdt-chip").forEach(x=>x.classList.remove("active"));
+      return;
+    }
+    selected=t;
+    listEl.querySelectorAll(".cdt-chip").forEach(x=>x.classList.toggle("active",x.dataset.team===t));
+    chartEl.hidden=false;
+    renderVBars(`${containerId}-chart`,groupByPeriod(rows.filter(r=>r.equipe===t),gran,valueFn));
+  }));
 }
 function renderRendementTeamHistory(rows){
   renderTeamHistory(rows,"rendementHistGranularity","rendementHistMode","rendementHistCharts",r=>Number(r.score)||0);
