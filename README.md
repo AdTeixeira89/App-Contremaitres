@@ -1,4 +1,4 @@
-# Suivi Contremaîtres
+# App CM
 
 Application interne de suivi des postes non travaillables, avec comptes utilisateurs
 et base de données partagée (Firebase).

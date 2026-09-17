@@ -6,7 +6,7 @@ const app = initializeApp(firebaseConfig);
 const messaging = getMessaging(app);
 
 onBackgroundMessage(messaging, (payload) => {
-  const title = payload.notification?.title || "Suivi CM";
+  const title = payload.notification?.title || "App CM";
   self.registration.showNotification(title, {
     body: payload.notification?.body || "",
     data: payload.data || {}

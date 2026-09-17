@@ -6,15 +6,15 @@
   <meta name="theme-color" content="#0f172a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Suivi CM" />
-  <title>Suivi Contremaîtres</title>
+  <meta name="apple-mobile-web-app-title" content="App CM" />
+  <title>App CM</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="login-overlay" id="loginScreen">
     <div class="login-card">
-      <div class="login-title">🔐 Suivi CM</div>
+      <div class="login-title">🔐 App CM</div>
 
       <div id="loginPanel">
         <p class="login-sub">Connectez-vous pour accéder à l'application.</p>
@@ -58,22 +58,26 @@
       <div class="brand">
         <div class="brand-mark">CM</div>
         <div>
-          <strong>Suivi CM</strong>
-          <span>Postes non travaillables</span>
+          <strong>App CM</strong>
         </div>
       </div>
 
       <nav id="nav">
-        <button class="nav-item active" data-view="dashboard">Tableau de bord</button>
-        <button class="nav-item" data-view="new">Nouveau message</button>
-        <button class="nav-item" data-view="requests">Demandes à traiter</button>
-        <button class="nav-item" data-view="history">Historique</button>
-        <button class="nav-item" data-view="stats">Statistiques</button>
-        <div class="nav-section">Rendement</div>
-        <button class="nav-item" data-view="rendement-new">Nouveau rendement</button>
-        <button class="nav-item" data-view="rendement-list">Alertes rendement</button>
-        <button class="nav-item" data-view="rendement-history">Historique rendement</button>
-        <button class="nav-item" data-view="rendement-stats">Statistiques rendement</button>
+        <button class="nav-item nav-item-dashboard active" data-view="dashboard">Tableau de bord<span class="nav-badge">Rejets + Rendement</span></button>
+        <div class="nav-group rejets">
+          <div class="nav-section">Rejets</div>
+          <button class="nav-item" data-view="new">Nouveau message</button>
+          <button class="nav-item" data-view="requests">Demandes à traiter</button>
+          <button class="nav-item" data-view="history">Historique</button>
+          <button class="nav-item" data-view="stats">Statistiques</button>
+        </div>
+        <div class="nav-group rendement">
+          <div class="nav-section">Rendement</div>
+          <button class="nav-item" data-view="rendement-new">Nouveau</button>
+          <button class="nav-item" data-view="rendement-list">Alertes</button>
+          <button class="nav-item" data-view="rendement-history">Historique</button>
+          <button class="nav-item" data-view="rendement-stats">Statistiques</button>
+        </div>
         <button class="nav-item" data-view="settings">Réglages</button>
       </nav>
 
