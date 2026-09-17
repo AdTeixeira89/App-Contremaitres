@@ -138,6 +138,17 @@
           </div>
           <div id="recentRequests" class="table-wrap"></div>
         </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Rendement</h2>
+            <button class="link-button" data-go="rendement-list">Voir tout</button>
+          </div>
+          <div class="form-grid">
+            <div class="detail-box"><span>Alertes actives</span><strong id="statRendementAlerts">0</strong></div>
+            <div class="detail-box"><span>Rendements enregistrés</span><strong id="statRendementTotal">0</strong></div>
+          </div>
+        </article>
       </section>
 
       <section id="view-new" class="view">
@@ -390,16 +401,10 @@ Postes travaillés :
           </div>
         </article>
         <div class="panel-grid" id="rendementHistCharts"></div>
-        <div class="panel-grid">
-          <article class="panel">
-            <div class="panel-header"><h2>Rendements par CDT</h2></div>
-            <div id="rendementStatsCdtChart" class="bar-chart empty-state">Aucune donnée</div>
-          </article>
-          <article class="panel">
-            <div class="panel-header"><h2>Rendements par chantier</h2></div>
-            <div id="rendementStatsChantierChart" class="bar-chart empty-state">Aucune donnée</div>
-          </article>
-        </div>
+        <article class="panel">
+          <div class="panel-header"><h2>Rendements par CDT</h2></div>
+          <div id="rendementCdtList" class="cdt-list empty-state">Aucune donnée</div>
+        </article>
         <article class="panel">
           <div class="panel-header"><h2>Alertes (en dessous du seuil) par CDT</h2></div>
           <div id="rendementStatsAlertChart" class="bar-chart empty-state">Aucune donnée</div>
