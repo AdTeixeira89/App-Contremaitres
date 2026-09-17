@@ -359,16 +359,31 @@ function renderDashboard(){
   renderBars("reasonChart",groupCount(state.requests,"motif"));
   renderBars("teamChart",groupCount(state.requests,"equipe"));
   document.getElementById("recentRequests").innerHTML=requestTable(state.requests.slice(0,5),false);
+  const openAlerts=state.yieldAlerts.filter(r=>r.belowThreshold && r.status!=="Traité" && r.status!=="Classé sans action").length;
+  document.getElementById("statRendementAlerts").textContent=openAlerts;
+  document.getElementById("statRendementTotal").textContent=state.yieldAlerts.length;
 }
 function groupCount(items,key){
   return items.reduce((acc,x)=>{const k=x[key]||"Non renseigné";acc[k]=(acc[k]||0)+1;return acc;},{});
 }
-function renderBars(id,data){
+function renderBars(id,data,danger=false){
   const el=document.getElementById(id), entries=Object.entries(data).sort((a,b)=>b[1]-a[1]);
   if(!entries.length){el.className="bar-chart empty-state";el.textContent="Aucune donnée";return;}
   const max=Math.max(...entries.map(x=>x[1]));
   el.className="bar-chart";
-  el.innerHTML=entries.map(([label,val])=>`<div class="bar-row"><span title="${escapeHtml(label)}">${escapeHtml(label)}</span><div class="bar-track"><div class="bar-fill" style="width:${(val/max)*100}%"></div></div><strong>${val}</strong></div>`).join("");
+  el.innerHTML=entries.map(([label,val])=>`<div class="bar-row"><span title="${escapeHtml(label)}">${escapeHtml(label)}</span><div class="bar-track"><div class="bar-fill${danger?" danger":""}" style="width:${(val/max)*100}%"></div></div><strong>${val}</strong></div>`).join("");
+}
+function renderRendementCdtList(rows){
+  const el=document.getElementById("rendementCdtList");
+  const cdts=[...new Set(rows.map(r=>r.cdt).filter(Boolean))].sort();
+  if(!cdts.length){el.className="cdt-list empty-state";el.textContent="Aucune donnée";return;}
+  el.className="cdt-list";
+  el.innerHTML=cdts.map(c=>`<button type="button" class="cdt-chip" data-cdt="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("");
+  el.querySelectorAll(".cdt-chip").forEach(b=>b.addEventListener("click",()=>{
+    switchView("rendement-list");
+    document.getElementById("rendementFilterSearch").value=b.dataset.cdt;
+    renderRendementList();
+  }));
 }
 /* ---------------------------------------------------------------------- */
 /* Statistiques                                                           */
@@ -569,7 +584,7 @@ function renderHistory(){
 function renderSettings(){
   if (currentUser?.role !== "admin") return;
   document.getElementById("cmSettings").innerHTML=state.countermasters.map((c,i)=>`<div class="setting-row cm"><input class="cm-name" data-i="${i}" value="${escapeHtml(c.name)}" placeholder="Nom"><input class="cm-email" data-i="${i}" value="${escapeHtml(c.email||"")}" type="email" placeholder="Email du compte lié"><button class="danger-button delete-cm" data-i="${i}">×</button></div>`).join("");
-  document.getElementById("teamSettings").innerHTML=state.teams.map((t,i)=>`<div class="setting-row team"><input class="team-name" data-i="${i}" value="${escapeHtml(t.name)}"><select class="team-cm" data-i="${i}">${state.countermasters.map(c=>`<option ${c.name===t.cm?"selected":""}>${escapeHtml(c.name)}</option>`).join("")}</select><button class="danger-button delete-team" data-i="${i}">×</button></div>`).join("");
+  document.getElementById("teamSettings").innerHTML=state.teams.map((t,i)=>`<div class="setting-row team"><input class="team-name" data-i="${i}" value="${escapeHtml(t.name)}"><select class="team-cm" data-i="${i}">${state.countermasters.map(c=>`<option ${c.name===t.cm?"selected":""}>${escapeHtml(c.name)}</option>`).join("")}</select><select class="team-depot" data-i="${i}"><option value="">Dépôt</option>${["14","37","47"].map(d=>`<option ${t.depot===d?"selected":""}>${d}</option>`).join("")}</select><button class="danger-button delete-team" data-i="${i}">×</button></div>`).join("");
   document.getElementById("prestationSettings").innerHTML=state.prestations.map((p,i)=>`<div class="setting-row"><input class="prestation-name" data-i="${i}" value="${escapeHtml(p)}"><button class="danger-button delete-prestation" data-i="${i}">×</button></div>`).join("");
   document.getElementById("reasonSettings").innerHTML=state.reasons.map((p,i)=>`<div class="setting-row"><input class="reason-name" data-i="${i}" value="${escapeHtml(p)}"><button class="danger-button delete-reason" data-i="${i}">×</button></div>`).join("");
   bindSettings();
@@ -579,12 +594,13 @@ function bindSettings(){
   document.querySelectorAll(".cm-email").forEach(x=>x.addEventListener("change",()=>{state.countermasters[x.dataset.i].email=x.value.trim();saveSettings()}));
   document.querySelectorAll(".team-name").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].name=x.value;saveSettings()}));
   document.querySelectorAll(".team-cm").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].cm=x.value;saveSettings()}));
+  document.querySelectorAll(".team-depot").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].depot=x.value;saveSettings()}));
   document.querySelectorAll(".prestation-name").forEach(x=>x.addEventListener("change",()=>{state.prestations[x.dataset.i]=x.value;saveSettings()}));
   document.querySelectorAll(".reason-name").forEach(x=>x.addEventListener("change",()=>{state.reasons[x.dataset.i]=x.value;saveSettings()}));
   [[".delete-cm","countermasters"],[".delete-team","teams"],[".delete-prestation","prestations"],[".delete-reason","reasons"]].forEach(([sel,key])=>document.querySelectorAll(sel).forEach(x=>x.addEventListener("click",()=>{state[key].splice(Number(x.dataset.i),1);saveSettings()})));
 }
 document.getElementById("addCM").addEventListener("click",()=>{state.countermasters.push({id:crypto.randomUUID(),name:"Nouveau contremaître",email:"",notifications:true});saveSettings()});
-document.getElementById("addTeam").addEventListener("click",()=>{state.teams.push({id:crypto.randomUUID(),name:"Nouvelle équipe",technicians:"",cm:state.countermasters[0]?.name||""});saveSettings()});
+document.getElementById("addTeam").addEventListener("click",()=>{state.teams.push({id:crypto.randomUUID(),name:"Nouvelle équipe",technicians:"",cm:state.countermasters[0]?.name||"",depot:""});saveSettings()});
 document.getElementById("addPrestation").addEventListener("click",()=>{state.prestations.push("Nouvelle prestation");saveSettings()});
 document.getElementById("addReason").addEventListener("click",()=>{state.reasons.push("Nouveau motif");saveSettings()});
 
@@ -940,9 +956,8 @@ function renderRendementTeamHistory(rows){
 function renderRendementStats(){
   const rows = rendementStatsFiltered();
   document.getElementById("rendementStatsCount").textContent = `${rows.length} rendement${rows.length>1?"s":""} correspondant${rows.length>1?"s":""} aux filtres`;
-  renderBars("rendementStatsCdtChart", groupCount(rows,"cdt"));
-  renderBars("rendementStatsChantierChart", groupCount(rows,"chantier"));
-  renderBars("rendementStatsAlertChart", groupCount(rows.filter(r=>r.belowThreshold),"cdt"));
+  renderRendementCdtList(rows);
+  renderBars("rendementStatsAlertChart", groupCount(rows.filter(r=>r.belowThreshold),"cdt"), true);
   renderRendementTeamHistory(rows);
 }
 ["rendementStatsFrom","rendementStatsTo","rendementStatsCdt","rendementStatsChantier","rendementHistGranularity","rendementHistMode"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));

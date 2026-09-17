@@ -1,6 +1,6 @@
 {
-  "name": "Suivi Contremaîtres",
-  "short_name": "Suivi CM",
+  "name": "App CM",
+  "short_name": "App CM",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f4f7fb",
