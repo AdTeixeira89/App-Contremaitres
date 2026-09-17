@@ -376,18 +376,30 @@ function renderBars(id,data,danger=false){
   el.className="bar-chart";
   el.innerHTML=entries.map(([label,val])=>`<div class="bar-row"><span title="${escapeHtml(label)}">${escapeHtml(label)}</span><div class="bar-track"><div class="bar-fill${danger?" danger":""}" style="width:${(val/max)*100}%"></div></div><strong>${val}</strong></div>`).join("");
 }
+const WEEKDAY_LABELS={1:"L",2:"M",3:"M",4:"J",5:"V",6:"S"};
 function renderRendementCdtList(rows){
   const el=document.getElementById("rendementCdtList");
   const cdts=[...new Set(rows.map(r=>r.cdt).filter(Boolean))].sort();
   if(!cdts.length){el.className="cdt-list empty-state";el.textContent="Aucune donnée";return;}
-  el.className="cdt-list";
-  el.innerHTML=cdts.map(c=>`<button type="button" class="cdt-chip" data-cdt="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("");
-  el.querySelectorAll(".cdt-chip").forEach(b=>b.addEventListener("click",()=>{
-    switchView("rendement-list");
-    document.getElementById("rendementBackToStats").hidden=false;
-    document.getElementById("rendementFilterSearch").value=b.dataset.cdt;
-    renderRendementList();
-  }));
+  el.className="cdt-week-chips";
+  el.innerHTML=cdts.map(cdt=>{
+    const cdtRows=rows.filter(r=>r.cdt===cdt);
+    const days=[1,2,3,4,5,6].map(dow=>{
+      const matches=cdtRows.filter(r=>{
+        const d=r.date?new Date(r.date):null;
+        return d && !Number.isNaN(d.getTime()) && d.getDay()===dow;
+      });
+      if(!matches.length) return {label:WEEKDAY_LABELS[dow],cls:"",id:""};
+      const alert=matches.some(r=>r.belowThreshold);
+      const latest=matches.slice().sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+      return {label:WEEKDAY_LABELS[dow],cls:alert?"bad":"good",id:latest.id};
+    });
+    return `<div class="cdt-week-chip">
+      <div class="week-days">${days.map(d=>`<button type="button" class="week-day ${d.cls}" data-id="${d.id}" ${d.id?"":"disabled"}><span>${d.label}</span><i></i></button>`).join("")}</div>
+      <div class="cdt-week-name">${escapeHtml(cdt)}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".week-day[data-id]:not([disabled])").forEach(b=>b.addEventListener("click",()=>openYieldAlert(b.dataset.id)));
 }
 /* ---------------------------------------------------------------------- */
 /* Statistiques                                                           */
