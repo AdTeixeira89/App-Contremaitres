@@ -67,7 +67,7 @@
         <div class="nav-group rejets">
           <div class="nav-section">Rejets</div>
           <button class="nav-item" data-view="new">Nouveau message</button>
-          <button class="nav-item" data-view="requests">Demandes à traiter</button>
+          <button class="nav-item" data-view="requests">Alertes</button>
           <button class="nav-item" data-view="history">Historique</button>
           <button class="nav-item" data-view="stats">Statistiques</button>
         </div>
@@ -267,18 +267,12 @@ PAS D'ACCES → PORTE DE CABINE BLOQUÉE"></textarea>
             </div>
           </div>
         </article>
-        <div class="panel-grid" id="statsHistCharts"></div>
+        <div id="statsHistCharts"></div>
 
-        <div class="panel-grid">
-          <article class="panel">
-            <div class="panel-header"><h2>Rejets par équipe</h2></div>
-            <div id="statsTeamChart" class="bar-chart empty-state">Aucune donnée</div>
-          </article>
-          <article class="panel">
-            <div class="panel-header"><h2>Rejets par zone (code GDO)</h2></div>
-            <div id="statsZoneChart" class="bar-chart empty-state">Aucune donnée</div>
-          </article>
-        </div>
+        <article class="panel">
+          <div class="panel-header"><h2>Rejets par équipe</h2></div>
+          <div id="statsTeamChart" class="bar-chart empty-state">Aucune donnée</div>
+        </article>
 
         <article class="panel">
           <div class="panel-header"><h2>Motifs les plus fréquents</h2></div>
@@ -341,6 +335,7 @@ Postes travaillés :
       </section>
 
       <section id="view-rendement-list" class="view">
+        <button class="link-button" id="rendementBackToStats" hidden>← Retour aux statistiques</button>
         <article class="panel">
           <div class="panel-header wrap">
             <div>
@@ -400,7 +395,7 @@ Postes travaillés :
             </div>
           </div>
         </article>
-        <div class="panel-grid" id="rendementHistCharts"></div>
+        <div id="rendementHistCharts"></div>
         <article class="panel">
           <div class="panel-header"><h2>Rendements par CDT</h2></div>
           <div id="rendementCdtList" class="cdt-list empty-state">Aucune donnée</div>

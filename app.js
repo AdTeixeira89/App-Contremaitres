@@ -242,13 +242,13 @@ async function logHistory(requestId, text) {
 const titles = {
   dashboard:["Tableau de bord","Vue globale des demandes et des traitements"],
   new:["Nouveau message","Coller et analyser un SMS reçu"],
-  requests:["Demandes à traiter","Suivi partagé entre les contremaîtres"],
+  requests:["Alertes","Suivi partagé entre les contremaîtres"],
   history:["Historique","Traçabilité de toutes les actions"],
-  stats:["Statistiques","Analyser les rejets par équipe, zone et motif"],
+  stats:["Statistiques","Analyser les rejets par équipe et par motif"],
   "rendement-new":["Nouveau rendement","Coller et analyser un SMS de rendement"],
   "rendement-list":["Alertes rendement","Suivi partagé entre les contremaîtres"],
   "rendement-history":["Historique rendement","Traçabilité de toutes les actions"],
-  "rendement-stats":["Statistiques rendement","Analyser les rendements par CDT et par chantier"],
+  "rendement-stats":["Statistiques rendement","Analyser les rendements par CDT"],
   settings:["Réglages","Notifications, et pour l'administrateur : comptes, équipes, contremaîtres, prestations et motifs"]
 };
 
@@ -265,7 +265,9 @@ function switchView(name){
   document.querySelector(".sidebar").classList.remove("open");
   if(name==="new") hydrateFormOptions();
   if(name==="rendement-new"){ hydrateRendementFormOptions(); renderRendementTaskFieldsInputs(); }
+  if(name!=="rendement-list") document.getElementById("rendementBackToStats").hidden=true;
 }
+document.getElementById("rendementBackToStats").addEventListener("click",()=>switchView("rendement-stats"));
 
 function hydrateFormOptions(){
   const fill=(id,items)=>document.getElementById(id).innerHTML=items.map(x=>`<option>${escapeHtml(x)}</option>`).join("");
@@ -284,6 +286,7 @@ document.getElementById("analyzeMessage").addEventListener("click",()=>{
   const raw=document.getElementById("rawMessage").value.trim();
   if(!raw) return toast("Collez d’abord un message.");
   const n=normalize(raw);
+  if(n.includes("RENDEMENT")) return toast("Ce message est un rendement, pas un rejet : utilisez « Nouveau » dans la section Rendement.");
   const poste=(raw.match(/\b\d{5}P\d{3,5}\b/i)||raw.match(/\b[A-Z0-9]{8,14}\b/i)||[""])[0];
   const prestation=state.prestations.find(p=>n.includes(normalize(p))) || state.prestations[0];
   const team=state.teams.find(t=>{
@@ -381,6 +384,7 @@ function renderRendementCdtList(rows){
   el.innerHTML=cdts.map(c=>`<button type="button" class="cdt-chip" data-cdt="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("");
   el.querySelectorAll(".cdt-chip").forEach(b=>b.addEventListener("click",()=>{
     switchView("rendement-list");
+    document.getElementById("rendementBackToStats").hidden=false;
     document.getElementById("rendementFilterSearch").value=b.dataset.cdt;
     renderRendementList();
   }));
@@ -434,7 +438,6 @@ function renderStats(){
   const rows = statsFilteredRequests();
   document.getElementById("statsCount").textContent = `${rows.length} rejet${rows.length>1?"s":""} correspondant${rows.length>1?"s":""} aux filtres`;
   renderBars("statsTeamChart", groupCount(rows,"equipe"));
-  renderBars("statsZoneChart", groupCount(rows.map(r=>({zone:gdoZone(r.poste)})),"zone"));
   renderBars("statsMotifChart", groupCount(rows,"motif"));
   renderTeamHistory(rows,"statsHistGranularity","statsHistMode","statsHistCharts",()=>1);
 }
@@ -947,8 +950,24 @@ function renderTeamHistory(rows,granId,modeId,containerId,valueFn){
     renderVBars(`${containerId}-combined`,totals);
     return;
   }
-  container.innerHTML=teams.map((t,i)=>`<article class="panel"><div class="panel-header"><h2>${escapeHtml(t)}</h2></div><div class="vbar-chart" id="${containerId}-team-${i}"></div></article>`).join("");
-  teams.forEach((t,i)=>renderVBars(`${containerId}-team-${i}`,groupByPeriod(rows.filter(r=>r.equipe===t),gran,valueFn)));
+  container.innerHTML=`<article class="panel"><div class="panel-header"><h2>Historique par équipe</h2></div><div class="cdt-list" id="${containerId}-list"></div><div id="${containerId}-chart" class="vbar-chart" style="margin-top:16px" hidden></div></article>`;
+  const listEl=document.getElementById(`${containerId}-list`);
+  const chartEl=document.getElementById(`${containerId}-chart`);
+  listEl.innerHTML=teams.map(t=>`<button type="button" class="cdt-chip" data-team="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join("");
+  let selected=null;
+  listEl.querySelectorAll(".cdt-chip").forEach(b=>b.addEventListener("click",()=>{
+    const t=b.dataset.team;
+    if(selected===t){
+      selected=null;
+      chartEl.hidden=true;
+      listEl.querySelectorAll(".cdt-chip").forEach(x=>x.classList.remove("active"));
+      return;
+    }
+    selected=t;
+    listEl.querySelectorAll(".cdt-chip").forEach(x=>x.classList.toggle("active",x.dataset.team===t));
+    chartEl.hidden=false;
+    renderVBars(`${containerId}-chart`,groupByPeriod(rows.filter(r=>r.equipe===t),gran,valueFn));
+  }));
 }
 function renderRendementTeamHistory(rows){
   renderTeamHistory(rows,"rendementHistGranularity","rendementHistMode","rendementHistCharts",r=>Number(r.score)||0);
