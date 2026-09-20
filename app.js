@@ -394,9 +394,6 @@ function renderDashboard(){
   document.getElementById("statProgress").textContent=counts("En cours");
   document.getElementById("statWaiting").textContent=counts("En attente");
   document.getElementById("statDone").textContent=counts("Traité");
-  const openAlerts=state.yieldAlerts.filter(r=>r.belowThreshold && r.status!=="Traité" && r.status!=="Classé sans action").length;
-  document.getElementById("statRendementAlerts").textContent=openAlerts;
-  document.getElementById("statRendementTotal").textContent=state.yieldAlerts.length;
   document.getElementById("boardWeekNumber").textContent=weekNumber(new Date());
   renderDashboardRendementBoard();
   renderRecentActivity();
@@ -433,9 +430,10 @@ function renderRecentActivity(){
   if(!items.length){el.innerHTML=`<div class="empty-state">Aucune activité récente</div>`;return;}
   el.innerHTML=items.map(item=>{
     const label=item.kind==="rejet" ? (item.poste||"Demande") : `Chantier ${item.chantier||"—"} — ${item.cdt||"—"}`;
+    const kindLabel=item.kind==="rejet" ? "Rejet" : "Rendement";
     return `<div class="recent-item ${item.kind}" data-kind="${item.kind}" data-id="${item.id}">
       <div class="recent-item-main"><strong>${escapeHtml(label)}</strong><span class="badge ${statusClass(item.status)}">${escapeHtml(item.status)}</span></div>
-      <span class="recent-item-meta">${escapeHtml(item.equipe||"—")} · ${fmtDate(item.date)}</span>
+      <span class="recent-item-meta">${kindLabel} · ${escapeHtml(item.equipe||"—")} · ${fmtDate(item.date)}</span>
     </div>`;
   }).join("");
   el.querySelectorAll(".recent-item").forEach(x=>x.addEventListener("click",()=>{
@@ -986,33 +984,6 @@ function renderRendementHistory(){
   </div>`).join(""):`<div class="empty-state">Aucun historique</div>`;
 }
 
-function renderRendementStatsFilters(){
-  const cdts = [...new Set(state.yieldAlerts.map(r=>r.cdt).filter(Boolean))].sort();
-  const cdtSel = document.getElementById("rendementStatsCdt"), curCdt = cdtSel.value;
-  cdtSel.innerHTML = `<option value="">Tous les CDT</option>` + cdts.map(c=>`<option>${escapeHtml(c)}</option>`).join("");
-  cdtSel.value = curCdt;
-
-  const chantiers = [...new Set(state.yieldAlerts.map(r=>r.chantier).filter(Boolean))].sort();
-  const chSel = document.getElementById("rendementStatsChantier"), curCh = chSel.value;
-  chSel.innerHTML = `<option value="">Tous les chantiers</option>` + chantiers.map(c=>`<option>${escapeHtml(c)}</option>`).join("");
-  chSel.value = curCh;
-}
-function rendementStatsFiltered(){
-  const to = document.getElementById("rendementStatsTo").value;
-  const cdt = document.getElementById("rendementStatsCdt").value;
-  const chantier = document.getElementById("rendementStatsChantier").value;
-  return state.yieldAlerts.filter(r=>{
-    if(cdt && r.cdt!==cdt) return false;
-    if(chantier && r.chantier!==chantier) return false;
-    if(to){
-      const d = r.date ? new Date(r.date) : (r.createdAt?.toDate ? r.createdAt.toDate() : null);
-      if(!d || Number.isNaN(d.getTime())) return false;
-      const day = d.toISOString().slice(0,10);
-      if(day>to) return false;
-    }
-    return true;
-  });
-}
 function renderVBars(id,entries){
   const el=document.getElementById(id);
   if(!entries.length){el.className="vbar-chart empty-state";el.textContent="Aucune donnée";return;}
@@ -1079,18 +1050,12 @@ function renderRendementTeamHistory(rows){
   renderTeamHistory(rows,"rendementHistGranularity","rendementHistMode","rendementHistCharts",r=>Number(r.score)||0);
 }
 function renderRendementStats(){
-  const rows = rendementStatsFiltered();
-  document.getElementById("rendementStatsCount").textContent = `${rows.length} rendement${rows.length>1?"s":""} correspondant${rows.length>1?"s":""} aux filtres`;
+  const rows = state.yieldAlerts;
   renderRendementCdtList(rows);
   renderBars("rendementStatsAlertChart", groupCount(rows.filter(r=>r.belowThreshold),"cdt"), true);
   renderRendementTeamHistory(rows);
 }
-["rendementStatsTo","rendementStatsCdt","rendementStatsChantier","rendementHistGranularity","rendementHistMode","rendementCdtChartType"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
-document.getElementById("rendementStatsReset").addEventListener("click", ()=>{
-  document.getElementById("rendementStatsTo").value="";
-  ["rendementStatsCdt","rendementStatsChantier"].forEach(id=>document.getElementById(id).value="");
-  renderRendementStats();
-});
+["rendementHistGranularity","rendementHistMode","rendementCdtChartType"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
 
 async function saveRendementSettings(){
   await setDoc(doc(db,"settings","rendement"), {
@@ -1232,7 +1197,6 @@ function renderAll(){
   renderRendementFilters();
   renderRendementList();
   renderRendementHistory();
-  renderRendementStatsFilters();
   renderRendementStats();
   renderRendementTaskSettings();
 }
