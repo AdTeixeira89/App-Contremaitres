@@ -353,18 +353,94 @@ document.getElementById("requestForm").addEventListener("submit", async e=>{
   }
 });
 
+const WEEKDAY_LABELS={1:"L",2:"M",3:"M",4:"J",5:"V",6:"S"};
+function weekNumber(d){
+  const onejan=new Date(d.getFullYear(),0,1);
+  return Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);
+}
+// La semaine "board" va de dimanche 00h00 à dimanche 00h00 suivant : elle se
+// réinitialise donc automatiquement dès qu'on passe le cap du dimanche minuit,
+// sans jamais toucher aux données Firestore (juste une fenêtre de lecture).
+function currentWeekBounds(){
+  const now=new Date();
+  const start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-now.getDay());
+  start.setHours(0,0,0,0);
+  const end=new Date(start);
+  end.setDate(end.getDate()+7);
+  return {start,end};
+}
+function weekdayChips(rows,dowRange=[1,2,3,4,5,6]){
+  return dowRange.map(dow=>{
+    const matches=rows.filter(r=>{
+      const d=r.date?new Date(r.date):null;
+      return d && !Number.isNaN(d.getTime()) && d.getDay()===dow;
+    });
+    if(!matches.length) return {label:WEEKDAY_LABELS[dow],cls:"",id:""};
+    const alert=matches.some(r=>r.belowThreshold);
+    const latest=matches.slice().sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+    return {label:WEEKDAY_LABELS[dow],cls:alert?"bad":"good",id:latest.id};
+  });
+}
+function weekChipHtml(name,days){
+  return `<div class="cdt-week-chip">
+    <div class="week-days">${days.map(d=>`<button type="button" class="week-day ${d.cls}" data-id="${d.id}" ${d.id?"":"disabled"}><span>${d.label}</span><i></i></button>`).join("")}</div>
+    <div class="cdt-week-name">${escapeHtml(name)}</div>
+  </div>`;
+}
+let selectedDepot="14";
 function renderDashboard(){
   const counts=s=>state.requests.filter(r=>r.status===s).length;
   document.getElementById("statTodo").textContent=counts("À traiter");
   document.getElementById("statProgress").textContent=counts("En cours");
   document.getElementById("statWaiting").textContent=counts("En attente");
   document.getElementById("statDone").textContent=counts("Traité");
-  renderBars("reasonChart",groupCount(state.requests,"motif"));
-  renderBars("teamChart",groupCount(state.requests,"equipe"));
-  document.getElementById("recentRequests").innerHTML=requestTable(state.requests.slice(0,5),false);
   const openAlerts=state.yieldAlerts.filter(r=>r.belowThreshold && r.status!=="Traité" && r.status!=="Classé sans action").length;
   document.getElementById("statRendementAlerts").textContent=openAlerts;
   document.getElementById("statRendementTotal").textContent=state.yieldAlerts.length;
+  document.getElementById("boardWeekNumber").textContent=weekNumber(new Date());
+  renderDashboardRendementBoard();
+  renderRecentActivity();
+}
+function renderDashboardRendementBoard(){
+  document.querySelectorAll(".depot-btn").forEach(b=>b.classList.toggle("active",b.dataset.depot===selectedDepot));
+  const el=document.getElementById("boardRendementPanels");
+  const teams=state.teams.filter(t=>t.depot===selectedDepot);
+  if(!teams.length){el.className="cdt-week-chips empty-state";el.textContent="Aucune équipe pour ce dépôt";return;}
+  const {start,end}=currentWeekBounds();
+  el.className="cdt-week-chips";
+  el.innerHTML=teams.map(team=>{
+    const rows=state.yieldAlerts.filter(r=>{
+      if(r.equipe!==team.name || !r.date) return false;
+      const d=new Date(r.date);
+      return !Number.isNaN(d.getTime()) && d>=start && d<end;
+    });
+    return weekChipHtml(team.name, weekdayChips(rows));
+  }).join("");
+  el.querySelectorAll(".week-day[data-id]:not([disabled])").forEach(b=>b.addEventListener("click",()=>openYieldAlert(b.dataset.id)));
+}
+document.querySelectorAll(".depot-btn").forEach(b=>b.addEventListener("click",()=>{
+  selectedDepot=b.dataset.depot;
+  renderDashboardRendementBoard();
+}));
+function renderRecentActivity(){
+  const items=[
+    ...state.requests.map(r=>({...r,kind:"rejet"})),
+    ...state.yieldAlerts.map(r=>({...r,kind:"rendement"}))
+  ].filter(x=>x.date && !Number.isNaN(new Date(x.date).getTime()))
+   .sort((a,b)=>new Date(b.date)-new Date(a.date))
+   .slice(0,8);
+  const el=document.getElementById("recentActivity");
+  if(!items.length){el.innerHTML=`<div class="empty-state">Aucune activité récente</div>`;return;}
+  el.innerHTML=items.map(item=>{
+    const label=item.kind==="rejet" ? (item.poste||"Demande") : `Chantier ${item.chantier||"—"} — ${item.cdt||"—"}`;
+    return `<div class="recent-item ${item.kind}" data-kind="${item.kind}" data-id="${item.id}">
+      <div class="recent-item-main"><strong>${escapeHtml(label)}</strong><span class="badge ${statusClass(item.status)}">${escapeHtml(item.status)}</span></div>
+      <span class="recent-item-meta">${escapeHtml(item.equipe||"—")} · ${fmtDate(item.date)}</span>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".recent-item").forEach(x=>x.addEventListener("click",()=>{
+    if(x.dataset.kind==="rejet") openRequest(x.dataset.id); else openYieldAlert(x.dataset.id);
+  }));
 }
 function groupCount(items,key){
   return items.reduce((acc,x)=>{const k=x[key]||"Non renseigné";acc[k]=(acc[k]||0)+1;return acc;},{});
@@ -376,30 +452,56 @@ function renderBars(id,data,danger=false){
   el.className="bar-chart";
   el.innerHTML=entries.map(([label,val])=>`<div class="bar-row"><span title="${escapeHtml(label)}">${escapeHtml(label)}</span><div class="bar-track"><div class="bar-fill${danger?" danger":""}" style="width:${(val/max)*100}%"></div></div><strong>${val}</strong></div>`).join("");
 }
-const WEEKDAY_LABELS={1:"L",2:"M",3:"M",4:"J",5:"V",6:"S"};
+function fmtShortDate(value){
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("fr-FR",{day:"2-digit",month:"2-digit"}).format(d);
+}
+function renderLineChart(id,entries){
+  const el=document.getElementById(id);
+  if(!entries.length){el.className="line-chart empty-state";el.textContent="Aucune donnée";return;}
+  el.className="line-chart";
+  const w=Math.max(entries.length*60,240), h=180, pad=24;
+  const values=entries.map(x=>x[1]);
+  const max=Math.max(...values,1), min=Math.min(...values,0);
+  const range=(max-min)||1;
+  const stepX=entries.length>1 ? (w-pad*2)/(entries.length-1) : 0;
+  const points=entries.map(([,val],i)=>[pad+stepX*i, h-pad-((val-min)/range)*(h-pad*2)]);
+  const path=points.map(p=>p.join(",")).join(" ");
+  const dots=points.map(([x,y],i)=>`<circle cx="${x}" cy="${y}" r="4" fill="#2563eb"><title>${escapeHtml(entries[i][0])}: ${entries[i][1]}</title></circle>`).join("");
+  const labels=entries.map(([label],i)=>`<text x="${points[i][0]}" y="${h-4}" font-size="10" text-anchor="middle" fill="#6b7280">${escapeHtml(label)}</text>`).join("");
+  el.innerHTML=`<svg width="${w}" height="${h}"><polyline points="${path}" fill="none" stroke="#2563eb" stroke-width="2"/>${dots}${labels}</svg>`;
+}
+function cdtScoreHistory(rows,cdt){
+  return rows.filter(r=>r.cdt===cdt && r.date && !Number.isNaN(new Date(r.date).getTime()))
+    .map(r=>({date:r.date,score:Number(r.score)||0,id:r.id}))
+    .sort((a,b)=>new Date(a.date)-new Date(b.date));
+}
+let selectedRendementCdt=null;
 function renderRendementCdtList(rows){
   const el=document.getElementById("rendementCdtList");
+  const chartEl=document.getElementById("rendementCdtChart");
   const cdts=[...new Set(rows.map(r=>r.cdt).filter(Boolean))].sort();
-  if(!cdts.length){el.className="cdt-list empty-state";el.textContent="Aucune donnée";return;}
-  el.className="cdt-week-chips";
-  el.innerHTML=cdts.map(cdt=>{
-    const cdtRows=rows.filter(r=>r.cdt===cdt);
-    const days=[1,2,3,4,5,6].map(dow=>{
-      const matches=cdtRows.filter(r=>{
-        const d=r.date?new Date(r.date):null;
-        return d && !Number.isNaN(d.getTime()) && d.getDay()===dow;
-      });
-      if(!matches.length) return {label:WEEKDAY_LABELS[dow],cls:"",id:""};
-      const alert=matches.some(r=>r.belowThreshold);
-      const latest=matches.slice().sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
-      return {label:WEEKDAY_LABELS[dow],cls:alert?"bad":"good",id:latest.id};
-    });
-    return `<div class="cdt-week-chip">
-      <div class="week-days">${days.map(d=>`<button type="button" class="week-day ${d.cls}" data-id="${d.id}" ${d.id?"":"disabled"}><span>${d.label}</span><i></i></button>`).join("")}</div>
-      <div class="cdt-week-name">${escapeHtml(cdt)}</div>
-    </div>`;
-  }).join("");
-  el.querySelectorAll(".week-day[data-id]:not([disabled])").forEach(b=>b.addEventListener("click",()=>openYieldAlert(b.dataset.id)));
+  if(!cdts.length){el.className="cdt-list empty-state";el.textContent="Aucune donnée";chartEl.hidden=true;return;}
+  el.className="cdt-list";
+  el.innerHTML=cdts.map(cdt=>`<button type="button" class="cdt-chip${selectedRendementCdt===cdt?" active":""}" data-cdt="${escapeHtml(cdt)}">${escapeHtml(cdt)}</button>`).join("");
+  if(selectedRendementCdt && !cdts.includes(selectedRendementCdt)) selectedRendementCdt=null;
+  const draw=()=>{
+    if(!selectedRendementCdt){ chartEl.hidden=true; return; }
+    chartEl.hidden=false;
+    const history=cdtScoreHistory(rows,selectedRendementCdt);
+    const entries=history.map(h=>[fmtShortDate(h.date),h.score]);
+    const type=document.getElementById("rendementCdtChartType").value;
+    if(type==="line") renderLineChart("rendementCdtChart",entries);
+    else renderVBars("rendementCdtChart",entries);
+  };
+  el.querySelectorAll(".cdt-chip").forEach(b=>b.addEventListener("click",()=>{
+    const c=b.dataset.cdt;
+    selectedRendementCdt = selectedRendementCdt===c ? null : c;
+    el.querySelectorAll(".cdt-chip").forEach(x=>x.classList.toggle("active",x.dataset.cdt===selectedRendementCdt));
+    draw();
+  }));
+  draw();
 }
 /* ---------------------------------------------------------------------- */
 /* Statistiques                                                           */
@@ -600,7 +702,6 @@ function renderSettings(){
   if (currentUser?.role !== "admin") return;
   document.getElementById("cmSettings").innerHTML=state.countermasters.map((c,i)=>`<div class="setting-row cm"><input class="cm-name" data-i="${i}" value="${escapeHtml(c.name)}" placeholder="Nom"><input class="cm-email" data-i="${i}" value="${escapeHtml(c.email||"")}" type="email" placeholder="Email du compte lié"><button class="danger-button delete-cm" data-i="${i}">×</button></div>`).join("");
   document.getElementById("teamSettings").innerHTML=state.teams.map((t,i)=>`<div class="setting-row team"><input class="team-name" data-i="${i}" value="${escapeHtml(t.name)}"><select class="team-cm" data-i="${i}">${state.countermasters.map(c=>`<option ${c.name===t.cm?"selected":""}>${escapeHtml(c.name)}</option>`).join("")}</select><select class="team-prestation" data-i="${i}"><option value="">Prestation</option>${state.prestations.map(p=>`<option ${t.prestation===p?"selected":""}>${escapeHtml(p)}</option>`).join("")}</select><select class="team-depot" data-i="${i}"><option value="">Dépôt</option>${["14","37","47"].map(d=>`<option ${t.depot===d?"selected":""}>${d}</option>`).join("")}</select><button class="danger-button delete-team" data-i="${i}">×</button></div>`).join("");
-  document.getElementById("prestationSettings").innerHTML=state.prestations.map((p,i)=>`<div class="setting-row"><input class="prestation-name" data-i="${i}" value="${escapeHtml(p)}"><button class="danger-button delete-prestation" data-i="${i}">×</button></div>`).join("");
   document.getElementById("reasonSettings").innerHTML=state.reasons.map((p,i)=>`<div class="setting-row"><input class="reason-name" data-i="${i}" value="${escapeHtml(p)}"><button class="danger-button delete-reason" data-i="${i}">×</button></div>`).join("");
   bindSettings();
 }
@@ -611,13 +712,11 @@ function bindSettings(){
   document.querySelectorAll(".team-cm").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].cm=x.value;saveSettings()}));
   document.querySelectorAll(".team-prestation").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].prestation=x.value;saveSettings()}));
   document.querySelectorAll(".team-depot").forEach(x=>x.addEventListener("change",()=>{state.teams[x.dataset.i].depot=x.value;saveSettings()}));
-  document.querySelectorAll(".prestation-name").forEach(x=>x.addEventListener("change",()=>{const old=state.prestations[x.dataset.i];state.prestations[x.dataset.i]=x.value;state.teams.forEach(t=>{if(t.prestation===old)t.prestation=x.value});saveSettings()}));
   document.querySelectorAll(".reason-name").forEach(x=>x.addEventListener("change",()=>{state.reasons[x.dataset.i]=x.value;saveSettings()}));
-  [[".delete-cm","countermasters"],[".delete-team","teams"],[".delete-prestation","prestations"],[".delete-reason","reasons"]].forEach(([sel,key])=>document.querySelectorAll(sel).forEach(x=>x.addEventListener("click",()=>{state[key].splice(Number(x.dataset.i),1);saveSettings()})));
+  [[".delete-cm","countermasters"],[".delete-team","teams"],[".delete-reason","reasons"]].forEach(([sel,key])=>document.querySelectorAll(sel).forEach(x=>x.addEventListener("click",()=>{state[key].splice(Number(x.dataset.i),1);saveSettings()})));
 }
 document.getElementById("addCM").addEventListener("click",()=>{state.countermasters.push({id:crypto.randomUUID(),name:"Nouveau contremaître",email:"",notifications:true});saveSettings()});
 document.getElementById("addTeam").addEventListener("click",()=>{state.teams.push({id:crypto.randomUUID(),name:"Nouvelle équipe",technicians:"",cm:state.countermasters[0]?.name||"",prestation:"",depot:""});saveSettings()});
-document.getElementById("addPrestation").addEventListener("click",()=>{state.prestations.push("Nouvelle prestation");saveSettings()});
 document.getElementById("addReason").addEventListener("click",()=>{state.reasons.push("Nouveau motif");saveSettings()});
 
 /* ---------------------------------------------------------------------- */
@@ -824,21 +923,17 @@ function rendementTable(rows, actions=true){
   </tbody></table>`;
 }
 function renderRendementList(){
-  const status=document.getElementById("rendementFilterStatus").value;
   const team=document.getElementById("rendementFilterTeam").value;
   const q=normalize(document.getElementById("rendementFilterSearch").value);
-  const rows=state.yieldAlerts.filter(r=>(!status||r.status===status)&&(!team||r.equipe===team)&&(!q||normalize(JSON.stringify(r)).includes(q)));
+  const rows=state.yieldAlerts.filter(r=>(!team||r.equipe===team)&&(!q||normalize(JSON.stringify(r)).includes(q)));
   document.getElementById("rendementTable").innerHTML=rendementTable(rows,true);
   document.querySelectorAll(".open-rendement").forEach(b=>b.addEventListener("click",()=>openYieldAlert(b.dataset.id)));
 }
 function renderRendementFilters(){
-  const statuses=["À traiter","En cours","En attente","Traité","Classé sans action"];
-  const s=document.getElementById("rendementFilterStatus"), current=s.value;
-  s.innerHTML=`<option value="">Tous les statuts</option>`+statuses.map(x=>`<option>${x}</option>`).join("");s.value=current;
   const t=document.getElementById("rendementFilterTeam"), cur=t.value;
   t.innerHTML=`<option value="">Toutes les équipes</option>`+state.teams.map(x=>`<option>${escapeHtml(x.name)}</option>`).join("");t.value=cur;
 }
-["rendementFilterStatus","rendementFilterTeam","rendementFilterSearch"].forEach(id=>document.getElementById(id).addEventListener("input",renderRendementList));
+["rendementFilterTeam","rendementFilterSearch"].forEach(id=>document.getElementById(id).addEventListener("input",renderRendementList));
 
 function yieldAlertHistoryHtml(alertId){
   const entries = state.history.filter(h=>h.kind==="yield" && h.yieldAlertId===alertId);
@@ -903,19 +998,17 @@ function renderRendementStatsFilters(){
   chSel.value = curCh;
 }
 function rendementStatsFiltered(){
-  const from = document.getElementById("rendementStatsFrom").value;
   const to = document.getElementById("rendementStatsTo").value;
   const cdt = document.getElementById("rendementStatsCdt").value;
   const chantier = document.getElementById("rendementStatsChantier").value;
   return state.yieldAlerts.filter(r=>{
     if(cdt && r.cdt!==cdt) return false;
     if(chantier && r.chantier!==chantier) return false;
-    if(from || to){
+    if(to){
       const d = r.date ? new Date(r.date) : (r.createdAt?.toDate ? r.createdAt.toDate() : null);
       if(!d || Number.isNaN(d.getTime())) return false;
       const day = d.toISOString().slice(0,10);
-      if(from && day<from) return false;
-      if(to && day>to) return false;
+      if(day>to) return false;
     }
     return true;
   });
@@ -992,9 +1085,9 @@ function renderRendementStats(){
   renderBars("rendementStatsAlertChart", groupCount(rows.filter(r=>r.belowThreshold),"cdt"), true);
   renderRendementTeamHistory(rows);
 }
-["rendementStatsFrom","rendementStatsTo","rendementStatsCdt","rendementStatsChantier","rendementHistGranularity","rendementHistMode"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
+["rendementStatsTo","rendementStatsCdt","rendementStatsChantier","rendementHistGranularity","rendementHistMode","rendementCdtChartType"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
 document.getElementById("rendementStatsReset").addEventListener("click", ()=>{
-  ["rendementStatsFrom","rendementStatsTo"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("rendementStatsTo").value="";
   ["rendementStatsCdt","rendementStatsChantier"].forEach(id=>document.getElementById(id).value="");
   renderRendementStats();
 });

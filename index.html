@@ -120,34 +120,29 @@
           <article class="stat-card success"><span>Traitées</span><strong id="statDone">0</strong></article>
         </div>
 
-        <div class="panel-grid">
-          <article class="panel">
-            <div class="panel-header"><h2>Répartition par motif</h2></div>
-            <div id="reasonChart" class="bar-chart empty-state">Aucune donnée</div>
-          </article>
-          <article class="panel">
-            <div class="panel-header"><h2>Répartition par équipe</h2></div>
-            <div id="teamChart" class="bar-chart empty-state">Aucune donnée</div>
-          </article>
-        </div>
-
         <article class="panel">
-          <div class="panel-header">
-            <h2>Demandes les plus récentes</h2>
-            <button class="link-button" data-go="requests">Voir tout</button>
-          </div>
-          <div id="recentRequests" class="table-wrap"></div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-header">
-            <h2>Rendement</h2>
+          <div class="panel-header wrap">
+            <div>
+              <h2>Rendement</h2>
+              <p>Semaine <strong id="boardWeekNumber">—</strong> · les panneaux se réinitialisent chaque dimanche à 00h00</p>
+            </div>
             <button class="link-button" data-go="rendement-list">Voir tout</button>
           </div>
           <div class="form-grid">
             <div class="detail-box"><span>Alertes actives</span><strong id="statRendementAlerts">0</strong></div>
             <div class="detail-box"><span>Rendements enregistrés</span><strong id="statRendementTotal">0</strong></div>
           </div>
+          <div class="depot-buttons" id="boardDepotButtons">
+            <button type="button" class="cdt-chip depot-btn" data-depot="14">Dépôt 14</button>
+            <button type="button" class="cdt-chip depot-btn" data-depot="37">Dépôt 37</button>
+            <button type="button" class="cdt-chip depot-btn" data-depot="47">Dépôt 47</button>
+          </div>
+          <div id="boardRendementPanels" class="cdt-week-chips empty-state">Sélectionnez un dépôt</div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header"><h2>Demandes les plus récentes</h2></div>
+          <div id="recentActivity" class="recent-list"></div>
         </article>
       </section>
 
@@ -343,7 +338,6 @@ Postes travaillés :
               <p>Filtrer, ouvrir et traiter les rendements reçus.</p>
             </div>
             <div class="filters">
-              <select id="rendementFilterStatus"><option value="">Tous les statuts</option></select>
               <select id="rendementFilterTeam"><option value="">Toutes les équipes</option></select>
               <input id="rendementFilterSearch" placeholder="Chantier, CDT…" />
             </div>
@@ -367,7 +361,6 @@ Postes travaillés :
               <p>Suivre les alertes par CDT et par chantier.</p>
             </div>
             <div class="filters">
-              <label class="inline-label">Du <input type="date" id="rendementStatsFrom" /></label>
               <label class="inline-label">Au <input type="date" id="rendementStatsTo" /></label>
               <select id="rendementStatsCdt"><option value="">Tous les CDT</option></select>
               <select id="rendementStatsChantier"><option value="">Tous les chantiers</option></select>
@@ -397,8 +390,15 @@ Postes travaillés :
         </article>
         <div id="rendementHistCharts"></div>
         <article class="panel">
-          <div class="panel-header"><h2>Rendements par CDT</h2></div>
+          <div class="panel-header wrap">
+            <h2>Rendements par CDT</h2>
+            <select id="rendementCdtChartType">
+              <option value="bar" selected>Graphique en barres</option>
+              <option value="line">Graphique en ligne</option>
+            </select>
+          </div>
           <div id="rendementCdtList" class="cdt-list empty-state">Aucune donnée</div>
+          <div id="rendementCdtChart" class="vbar-chart" style="margin-top:16px" hidden></div>
         </article>
         <article class="panel">
           <div class="panel-header"><h2>Alertes (en dessous du seuil) par CDT</h2></div>
@@ -436,12 +436,6 @@ Postes travaillés :
             <div class="panel-header"><h2>Équipes</h2></div>
             <div id="teamSettings"></div>
             <button class="secondary full-width" id="addTeam">+ Ajouter une équipe</button>
-          </article>
-
-          <article class="panel admin-only hidden">
-            <div class="panel-header"><h2>Prestations</h2></div>
-            <div id="prestationSettings"></div>
-            <button class="secondary full-width" id="addPrestation">+ Ajouter une prestation</button>
           </article>
 
           <article class="panel admin-only hidden">
