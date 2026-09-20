@@ -82,7 +82,7 @@ dialog{border:0;border-radius:18px;padding:0;box-shadow:0 25px 70px rgba(0,0,0,.
 .user-row{grid-template-columns:1fr auto auto auto;align-items:center}
 .user-row-info{display:grid;gap:2px}.user-row-info span{font-size:12px;color:var(--muted)}
 .user-role{width:auto}
-@media(max-width:620px){.user-row{grid-template-columns:1fr;gap:6px}.user-role{width:100%}.setting-row.team{grid-template-columns:1fr;gap:6px}}
+@media(max-width:620px){.user-row{grid-template-columns:1fr;gap:6px}.user-role{width:100%}.setting-row.team,.setting-row.cm{grid-template-columns:1fr;gap:6px}}
 
 .inline-label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--muted)}.inline-label input{width:auto}
 .small-note{font-size:13px;color:var(--muted);margin:8px 0}
