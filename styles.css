@@ -40,7 +40,8 @@ input,select,textarea{width:100%;border:1px solid #d8dee8;border-radius:10px;pad
 .week-day i{width:9px;height:9px;border-radius:50%;display:block;background:#d1d5db}
 .week-day.good i{background:var(--success)}
 .week-day.bad i{background:var(--danger)}
-.cdt-week-name{font-size:13px;font-weight:700;margin-top:2px;text-align:center}
+.cdt-week-name{font-size:13px;font-weight:700;margin-top:2px;text-align:center;border:0;background:transparent;padding:0;cursor:pointer;color:inherit;text-decoration:underline;text-decoration-color:transparent}
+.cdt-week-name:hover{text-decoration-color:currentColor}
 .depot-buttons{display:flex;gap:8px;margin:14px 0 12px;flex-wrap:wrap}
 .recent-list{display:grid;gap:10px}
 .recent-item{border:1px solid var(--line);border-left:4px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;background:var(--panel)}
