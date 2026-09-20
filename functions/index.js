@@ -186,6 +186,17 @@ function parseRendement(raw, rendementSettings, generalSettings) {
   return { chantier, cdt, team, values, score };
 }
 
+// Les CDT envoient leur SMS de rendement soit le soir même, soit le lendemain
+// matin : un SMS reçu avant midi (heure de Paris) est donc rattaché à la
+// veille pour que le jour affecté corresponde au jour de travail réel.
+function inferRendementDate() {
+  const now = new Date();
+  const parisHour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", hour: "2-digit", hour12: false }).format(now));
+  const target = new Date(now);
+  if (parisHour < 12) target.setDate(target.getDate() - 1);
+  return target;
+}
+
 async function notifyCountermaster(cmName, settings, requestSummary) {
   const cm = (settings.countermasters || []).find(c => c.name === cmName);
   if (!cm || !cm.email) return { notified: false, reason: "email non configuré" };
@@ -271,7 +282,7 @@ exports.receiveSms = onRequest({ invoker: "public" }, async (req, res) => {
       const alertData = {
         chantier, cdt, equipe: team?.name || "", cm: team?.cm || "",
         tasks: values, score, threshold, belowThreshold,
-        status: "À traiter", date: new Date().toISOString(),
+        status: "À traiter", date: inferRendementDate().toISOString(),
         action: "", original: raw, treatedBy: "", treatedAt: "",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         createdBy: null, createdByName: "SMS automatique",
