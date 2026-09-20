@@ -358,12 +358,13 @@ function weekNumber(d){
   const onejan=new Date(d.getFullYear(),0,1);
   return Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);
 }
-// La semaine "board" va de dimanche 00h00 à dimanche 00h00 suivant : elle se
-// réinitialise donc automatiquement dès qu'on passe le cap du dimanche minuit,
+// La semaine "board" va de lundi 00h00 à lundi 00h00 suivant : elle se
+// réinitialise donc automatiquement dès qu'on passe le cap du lundi minuit,
 // sans jamais toucher aux données Firestore (juste une fenêtre de lecture).
 function currentWeekBounds(){
   const now=new Date();
-  const start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-now.getDay());
+  const offset=(now.getDay()+6)%7;
+  const start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-offset);
   start.setHours(0,0,0,0);
   const end=new Date(start);
   end.setDate(end.getDate()+7);
@@ -384,8 +385,19 @@ function weekdayChips(rows,dowRange=[1,2,3,4,5,6]){
 function weekChipHtml(name,days){
   return `<div class="cdt-week-chip">
     <div class="week-days">${days.map(d=>`<button type="button" class="week-day ${d.cls}" data-id="${d.id}" ${d.id?"":"disabled"}><span>${d.label}</span><i></i></button>`).join("")}</div>
-    <div class="cdt-week-name">${escapeHtml(name)}</div>
+    <button type="button" class="cdt-week-name" data-team="${escapeHtml(name)}">${escapeHtml(name)}</button>
   </div>`;
+}
+function openWeekSummary(teamName,rows){
+  const sorted=rows.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const items=sorted.length
+    ? sorted.map(r=>`<div class="detail-box full"><span>${fmtDate(r.date)}${r.belowThreshold?" — en alerte":""}</span><pre>${escapeHtml(r.original||"—")}</pre></div>`).join("")
+    : `<div class="empty-state">Aucun rendement reçu cette semaine</div>`;
+  document.getElementById("dialogContent").innerHTML=`
+    <h2>${escapeHtml(teamName)}</h2>
+    <p>Messages rendement de la semaine en cours</p>
+    <div class="detail-grid">${items}</div>`;
+  document.getElementById("requestDialog").showModal();
 }
 let selectedDepot="14";
 function renderDashboard(){
@@ -404,6 +416,7 @@ function renderDashboardRendementBoard(){
   const teams=state.teams.filter(t=>t.depot===selectedDepot);
   if(!teams.length){el.className="cdt-week-chips empty-state";el.textContent="Aucune équipe pour ce dépôt";return;}
   const {start,end}=currentWeekBounds();
+  const rowsByTeam={};
   el.className="cdt-week-chips";
   el.innerHTML=teams.map(team=>{
     const rows=state.yieldAlerts.filter(r=>{
@@ -411,9 +424,11 @@ function renderDashboardRendementBoard(){
       const d=new Date(r.date);
       return !Number.isNaN(d.getTime()) && d>=start && d<end;
     });
+    rowsByTeam[team.name]=rows;
     return weekChipHtml(team.name, weekdayChips(rows));
   }).join("");
   el.querySelectorAll(".week-day[data-id]:not([disabled])").forEach(b=>b.addEventListener("click",()=>openYieldAlert(b.dataset.id)));
+  el.querySelectorAll(".cdt-week-name").forEach(b=>b.addEventListener("click",()=>openWeekSummary(b.dataset.team, rowsByTeam[b.dataset.team]||[])));
 }
 document.querySelectorAll(".depot-btn").forEach(b=>b.addEventListener("click",()=>{
   selectedDepot=b.dataset.depot;
@@ -510,55 +525,12 @@ function gdoZone(poste=""){
   return m ? m[1] : "Non renseigné";
 }
 
-function renderStatsFilters(){
-  const teamSel = document.getElementById("statsTeam"), curTeam = teamSel.value;
-  teamSel.innerHTML = `<option value="">Toutes les équipes</option>` + state.teams.map(t=>`<option>${escapeHtml(t.name)}</option>`).join("");
-  teamSel.value = curTeam;
-
-  const zones = [...new Set(state.requests.map(r=>gdoZone(r.poste)))].sort();
-  const zoneSel = document.getElementById("statsZone"), curZone = zoneSel.value;
-  zoneSel.innerHTML = `<option value="">Toutes les zones</option>` + zones.map(z=>`<option value="${escapeHtml(z)}">${escapeHtml(z)}</option>`).join("");
-  zoneSel.value = curZone;
-
-  const motifSel = document.getElementById("statsMotif"), curMotif = motifSel.value;
-  motifSel.innerHTML = `<option value="">Tous les motifs</option>` + state.reasons.map(m=>`<option>${escapeHtml(m)}</option>`).join("");
-  motifSel.value = curMotif;
-}
-
-function statsFilteredRequests(){
-  const from = document.getElementById("statsFrom").value;
-  const to = document.getElementById("statsTo").value;
-  const team = document.getElementById("statsTeam").value;
-  const zone = document.getElementById("statsZone").value;
-  const motif = document.getElementById("statsMotif").value;
-  return state.requests.filter(r=>{
-    if(team && r.equipe!==team) return false;
-    if(zone && gdoZone(r.poste)!==zone) return false;
-    if(motif && r.motif!==motif) return false;
-    if(from || to){
-      const d = r.date ? new Date(r.date) : (r.createdAt?.toDate ? r.createdAt.toDate() : null);
-      if(!d || Number.isNaN(d.getTime())) return false;
-      const day = d.toISOString().slice(0,10);
-      if(from && day<from) return false;
-      if(to && day>to) return false;
-    }
-    return true;
-  });
-}
-
 function renderStats(){
-  const rows = statsFilteredRequests();
-  document.getElementById("statsCount").textContent = `${rows.length} rejet${rows.length>1?"s":""} correspondant${rows.length>1?"s":""} aux filtres`;
+  const rows = state.requests;
   renderBars("statsTeamChart", groupCount(rows,"equipe"));
   renderBars("statsMotifChart", groupCount(rows,"motif"));
-  renderTeamHistory(rows,"statsHistGranularity","statsHistMode","statsHistCharts",()=>1);
+  renderBars("statsZoneChart", groupCount(rows.map(r=>({zone:gdoZone(r.poste)})),"zone"));
 }
-["statsFrom","statsTo","statsTeam","statsZone","statsMotif","statsHistGranularity","statsHistMode"].forEach(id=>document.getElementById(id).addEventListener("input", renderStats));
-document.getElementById("statsReset").addEventListener("click", ()=>{
-  ["statsFrom","statsTo"].forEach(id=>document.getElementById(id).value="");
-  ["statsTeam","statsZone","statsMotif"].forEach(id=>document.getElementById(id).value="");
-  renderStats();
-});
 
 function requestTable(rows,actions=true){
   if(!rows.length) return `<div class="empty-state">Aucune demande</div>`;
@@ -1047,15 +1019,19 @@ function renderTeamHistory(rows,granId,modeId,containerId,valueFn){
   }));
 }
 function renderRendementTeamHistory(rows){
-  renderTeamHistory(rows,"rendementHistGranularity","rendementHistMode","rendementHistCharts",r=>Number(r.score)||0);
+  const depot=document.getElementById("rendementHistDepot").value;
+  const filtered = depot ? rows.filter(r=>{
+    const team=state.teams.find(t=>t.name===r.equipe);
+    return team && team.depot===depot;
+  }) : rows;
+  renderTeamHistory(filtered,"rendementHistGranularity","rendementHistMode","rendementHistCharts",r=>Number(r.score)||0);
 }
 function renderRendementStats(){
   const rows = state.yieldAlerts;
   renderRendementCdtList(rows);
-  renderBars("rendementStatsAlertChart", groupCount(rows.filter(r=>r.belowThreshold),"cdt"), true);
   renderRendementTeamHistory(rows);
 }
-["rendementHistGranularity","rendementHistMode","rendementCdtChartType"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
+["rendementHistDepot","rendementHistGranularity","rendementHistMode","rendementCdtChartType"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
 
 async function saveRendementSettings(){
   await setDoc(doc(db,"settings","rendement"), {
@@ -1190,7 +1166,6 @@ function renderAll(){
   renderDashboard();
   renderRequests();
   renderHistory();
-  renderStatsFilters();
   renderStats();
   renderSettings();
   hydrateRendementFormOptions();
