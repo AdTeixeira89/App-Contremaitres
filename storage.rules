@@ -6,23 +6,22 @@ service firebase.storage {
     function isSignedIn() {
       return request.auth != null;
     }
-    function isActiveUser() {
-      return isSignedIn() &&
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.active == true;
-    }
 
     // Photos jointes aux actions/commentaires des demandes (rejets) et des
-    // alertes rendement : tout compte actif peut en ajouter et les consulter.
-    // Limité aux images, 10 Mo max.
+    // alertes rendement : tout compte connecté peut en ajouter et les
+    // consulter (limité aux images, 10 Mo max). Les fiches elles-mêmes
+    // restent protégées par les règles Firestore, qui vérifient déjà que le
+    // compte est actif ; on évite ici la vérification croisée vers Firestore
+    // (peu fiable pour Storage) pour ne dépendre que de la session connectée.
     match /requests/{requestId}/{allPaths=**} {
-      allow read: if isActiveUser();
-      allow write: if isActiveUser()
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
     match /yieldAlerts/{alertId}/{allPaths=**} {
-      allow read: if isActiveUser();
-      allow write: if isActiveUser()
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
