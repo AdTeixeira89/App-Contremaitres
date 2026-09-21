@@ -197,6 +197,12 @@ function inferRendementDate() {
   return target;
 }
 
+// Clé "AAAA-MM-JJ" du jour calendaire à Paris, utilisée pour comparer deux
+// dates sans se soucier du fuseau horaire du serveur.
+function parisDateKey(d) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
 async function notifyCountermaster(cmName, settings, requestSummary) {
   const cm = (settings.countermasters || []).find(c => c.name === cmName);
   if (!cm || !cm.email) return { notified: false, reason: "email non configuré" };
@@ -258,9 +264,17 @@ exports.receiveSms = onRequest({ invoker: "public" }, async (req, res) => {
     const isRendement = normalize(raw).includes("RENDEMENT");
     const targetCollection = isRendement ? "yieldAlerts" : "requests";
 
+    // Un même texte de SMS n'est considéré comme doublon que s'il a déjà été
+    // reçu le jour même (heure de Paris) : le même message peut légitimement
+    // revenir un autre jour (mêmes chiffres, journée différente).
     const smsHash = crypto.createHash("sha256").update(raw).digest("hex");
-    const dupSnap = await db.collection(targetCollection).where("smsHash", "==", smsHash).limit(1).get();
-    if (!dupSnap.empty) {
+    const dupSnap = await db.collection(targetCollection).where("smsHash", "==", smsHash).get();
+    const todayKey = parisDateKey(new Date());
+    const isDuplicateToday = dupSnap.docs.some(d => {
+      const createdAt = d.data().createdAt?.toDate ? d.data().createdAt.toDate() : null;
+      return createdAt && parisDateKey(createdAt) === todayKey;
+    });
+    if (isDuplicateToday) {
       res.status(200).json({ ok: true, duplicate: true });
       return;
     }
