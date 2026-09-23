@@ -255,6 +255,7 @@ const titles = {
 document.querySelectorAll("[data-view]").forEach(btn => btn.addEventListener("click",()=>switchView(btn.dataset.view)));
 document.querySelectorAll("[data-go]").forEach(btn => btn.addEventListener("click",()=>switchView(btn.dataset.go)));
 document.getElementById("mobileMenu").addEventListener("click",()=>document.querySelector(".sidebar").classList.toggle("open"));
+document.querySelectorAll("#view-settings .panel-header").forEach(h=>h.addEventListener("click",()=>h.closest(".panel").classList.toggle("collapsed")));
 
 function switchView(name){
   document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
