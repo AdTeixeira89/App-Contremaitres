@@ -1,6 +1,6 @@
 import {
   collection, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot,
-  query, orderBy, limit, serverTimestamp
+  query, orderBy, limit, serverTimestamp, getDocs
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
@@ -1155,6 +1155,24 @@ document.getElementById("disableNotifications").addEventListener("click", async 
     statusEl.textContent = "Notifications désactivées sur cet appareil.";
   } catch(err) {
     statusEl.textContent = "Erreur : " + (err.message || "impossible de désactiver les notifications.");
+  }
+  btn.disabled = false;
+});
+
+document.getElementById("resetAllDevices").addEventListener("click", async () => {
+  if(!confirm("Supprimer tous les appareils enregistrés pour les notifications sur ce compte ? Il faudra réactiver les notifications sur chaque appareil ensuite.")) return;
+  const btn = document.getElementById("resetAllDevices");
+  const statusEl = document.getElementById("notificationsStatus");
+  btn.disabled = true;
+  try {
+    const tokensSnap = await getDocs(collection(db, "users", currentUser.uid, "deviceTokens"));
+    await Promise.all(tokensSnap.docs.map(d => deleteDoc(d.ref)));
+    if(await messagingIsSupported()) {
+      await deleteToken(getMessaging(firebaseApp)).catch(() => {});
+    }
+    statusEl.textContent = `${tokensSnap.size} appareil(s) supprimé(s). Réactivez les notifications sur chaque appareil.`;
+  } catch(err) {
+    statusEl.textContent = "Erreur : " + (err.message || "impossible de réinitialiser les appareils.");
   }
   btn.disabled = false;
 });
