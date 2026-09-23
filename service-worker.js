@@ -1,5 +1,22 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getMessaging, onBackgroundMessage } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-sw.js";
+import { firebaseConfig } from "./firebase-config.js";
 
-const CACHE="app-cm-v10";
+// Un seul service worker gère à la fois le cache PWA et les notifications
+// push : deux service workers enregistrés séparément se disputent le
+// contrôle de la page (le dernier activé gagne), ce qui coupait les
+// notifications en arrière-plan dès que celui-ci se réactivait.
+const messagingApp = initializeApp(firebaseConfig);
+const messaging = getMessaging(messagingApp);
+onBackgroundMessage(messaging, (payload) => {
+  const title = payload.notification?.title || "App CM";
+  self.registration.showNotification(title, {
+    body: payload.notification?.body || "",
+    data: payload.data || {}
+  });
+});
+
+const CACHE="app-cm-v11";
 const ASSETS=["./","./index.html","./styles.css","./app.js","./auth.js","./firebase-init.js","./firebase-config.js","./manifest.webmanifest"];
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)))});
 self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
