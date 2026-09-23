@@ -1127,7 +1127,7 @@ document.getElementById("enableNotifications").addEventListener("click", async (
     if(VAPID_KEY === "REPLACE_ME") throw new Error("Clé de notification non configurée par l'administrateur.");
     const permission = await Notification.requestPermission();
     if(permission !== "granted") throw new Error("Autorisation refusée.");
-    const swReg = await navigator.serviceWorker.register("firebase-messaging-sw.js", { type: "module" });
+    const swReg = await navigator.serviceWorker.register("service-worker.js", { type: "module" });
     const messaging = getMessaging(firebaseApp);
     const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
     await setDoc(doc(db, "users", currentUser.uid, "deviceTokens", token), {
@@ -1147,7 +1147,7 @@ document.getElementById("disableNotifications").addEventListener("click", async 
   btn.disabled = true;
   try {
     if(!(await messagingIsSupported())) throw new Error("Les notifications ne sont pas prises en charge par ce navigateur.");
-    const swReg = await navigator.serviceWorker.getRegistration("firebase-messaging-sw.js");
+    const swReg = await navigator.serviceWorker.getRegistration("service-worker.js");
     const messaging = getMessaging(firebaseApp);
     const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg || undefined }).catch(() => null);
     if(token) await deleteDoc(doc(db, "users", currentUser.uid, "deviceTokens", token));
@@ -1178,4 +1178,4 @@ function renderAll(){
   renderRendementTaskSettings();
 }
 
-if("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");
+if("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js", { type: "module" });
