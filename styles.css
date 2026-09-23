@@ -89,3 +89,11 @@ dialog{border:0;border-radius:18px;padding:0;box-shadow:0 25px 70px rgba(0,0,0,.
 .small-note{font-size:13px;color:var(--muted);margin:8px 0}
 .photo-preview img{max-width:100%;border-radius:12px;margin-top:8px;display:block}
 .history-photo{max-width:160px;border-radius:10px;margin-top:8px;display:block}
+
+/* Réglages : panneaux repliables pour éviter un long défilement sur mobile */
+#view-settings .panel{margin-bottom:12px}
+#view-settings .panel-header{cursor:pointer;margin-bottom:0;user-select:none}
+#view-settings .panel-header::after{content:"▾";color:var(--muted);font-size:13px;transition:transform .15s}
+#view-settings .panel.collapsed .panel-header::after{transform:rotate(-90deg)}
+#view-settings .panel.collapsed>*:not(.panel-header){display:none}
+#view-settings .panel:not(.collapsed) .panel-header{margin-bottom:18px}

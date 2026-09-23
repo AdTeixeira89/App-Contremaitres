@@ -255,6 +255,7 @@ const titles = {
 document.querySelectorAll("[data-view]").forEach(btn => btn.addEventListener("click",()=>switchView(btn.dataset.view)));
 document.querySelectorAll("[data-go]").forEach(btn => btn.addEventListener("click",()=>switchView(btn.dataset.go)));
 document.getElementById("mobileMenu").addEventListener("click",()=>document.querySelector(".sidebar").classList.toggle("open"));
+document.querySelectorAll("#view-settings .panel-header").forEach(h=>h.addEventListener("click",()=>h.closest(".panel").classList.toggle("collapsed")));
 
 function switchView(name){
   document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
@@ -1116,6 +1117,17 @@ function refreshNotificationStatus(){
   if(Notification.permission === "denied"){ statusEl.textContent = "Notifications bloquées : autorisez-les dans les réglages du navigateur, puis réessayez."; }
   else if(Notification.permission === "granted"){ statusEl.textContent = "Notifications activées sur cet appareil."; }
   else { statusEl.textContent = ""; }
+  refreshDeviceTokenCount();
+}
+async function refreshDeviceTokenCount(){
+  const el = document.getElementById("deviceTokenCount");
+  if(!currentUser) return;
+  try {
+    const snap = await getDocs(collection(db, "users", currentUser.uid, "deviceTokens"));
+    el.textContent = snap.size > 1
+      ? `${snap.size} appareils enregistrés pour les notifications sur ce compte.`
+      : snap.size === 1 ? "1 appareil enregistré pour les notifications sur ce compte." : "";
+  } catch { el.textContent = ""; }
 }
 
 document.getElementById("enableNotifications").addEventListener("click", async () => {
@@ -1138,6 +1150,7 @@ document.getElementById("enableNotifications").addEventListener("click", async (
   } catch(err) {
     statusEl.textContent = "Erreur : " + (err.message || "impossible d'activer les notifications.");
   }
+  await refreshDeviceTokenCount();
   btn.disabled = false;
 });
 
@@ -1156,6 +1169,7 @@ document.getElementById("disableNotifications").addEventListener("click", async 
   } catch(err) {
     statusEl.textContent = "Erreur : " + (err.message || "impossible de désactiver les notifications.");
   }
+  await refreshDeviceTokenCount();
   btn.disabled = false;
 });
 
@@ -1174,6 +1188,7 @@ document.getElementById("resetAllDevices").addEventListener("click", async () =>
   } catch(err) {
     statusEl.textContent = "Erreur : " + (err.message || "impossible de réinitialiser les appareils.");
   }
+  await refreshDeviceTokenCount();
   btn.disabled = false;
 });
 
