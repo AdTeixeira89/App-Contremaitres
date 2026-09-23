@@ -148,7 +148,8 @@ function parseSms(raw, settings) {
   const prestation = (settings.prestations || []).find(p => n.includes(normalize(p))) || "";
   const team = (settings.teams || []).find(t => {
     const names = (t.technicians || "").split(",").map(x => normalize(x.trim()));
-    return names.some(name => name && name.split(" ").some(part => part.length > 1 && n.includes(part))) || n.includes(normalize(t.name));
+    names.push(normalize(t.name));
+    return names.some(name => name && name.split(" ").some(part => part.length > 1 && n.includes(part)));
   });
   let motif = (settings.reasons || []).find(r => n.includes(normalize(r)));
   if (!motif) {
@@ -172,7 +173,8 @@ function parseRendement(raw, rendementSettings, generalSettings) {
   const cdtNorm = normalize(cdt);
   const team = (generalSettings.teams || []).find(t => {
     const names = (t.technicians || "").split(",").map(x => normalize(x.trim()));
-    return names.some(name => name && name.split(" ").some(part => part.length > 1 && cdtNorm.includes(part))) || cdtNorm.includes(normalize(t.name));
+    names.push(normalize(t.name));
+    return names.some(name => name && name.split(" ").some(part => part.length > 1 && cdtNorm.includes(part)));
   });
   const tasks = rendementSettings.tasks || [];
   const values = {};
