@@ -205,6 +205,20 @@ function parisDateKey(d) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
 
+// Création atomique avec ID déterministe : échoue silencieusement (renvoie
+// null) si le document existe déjà, sans jamais créer de doublon même en
+// cas de requêtes quasi simultanées.
+async function createDeduped(collectionName, dedupeId, data) {
+  const ref = db.collection(collectionName).doc(dedupeId);
+  try {
+    await ref.create(data);
+    return ref;
+  } catch (err) {
+    if (err.code === 6) return null; // ALREADY_EXISTS
+    throw err;
+  }
+}
+
 async function notifyCountermaster(cmName, settings, requestSummary) {
   const cm = (settings.countermasters || []).find(c => c.name === cmName);
   if (!cm || !cm.email) return { notified: false, reason: "email non configuré" };
@@ -264,22 +278,17 @@ exports.receiveSms = onRequest({ invoker: "public" }, async (req, res) => {
     const from = (typeof body === "object" && body?.from) || null;
 
     const isRendement = normalize(raw).includes("RENDEMENT");
-    const targetCollection = isRendement ? "yieldAlerts" : "requests";
 
     // Un même texte de SMS n'est considéré comme doublon que s'il a déjà été
     // reçu le jour même (heure de Paris) : le même message peut légitimement
-    // revenir un autre jour (mêmes chiffres, journée différente).
+    // revenir un autre jour (mêmes chiffres, journée différente). L'ID du
+    // document est dérivé du texte + du jour, et la création est atomique
+    // (échoue si le document existe déjà) : contrairement à une lecture
+    // suivie d'une écriture séparée, deux requêtes reçues à quelques
+    // millisecondes d'intervalle (ex. une nouvelle tentative réseau de
+    // MacroDroid) ne peuvent plus créer deux fiches identiques en même temps.
     const smsHash = crypto.createHash("sha256").update(raw).digest("hex");
-    const dupSnap = await db.collection(targetCollection).where("smsHash", "==", smsHash).get();
-    const todayKey = parisDateKey(new Date());
-    const isDuplicateToday = dupSnap.docs.some(d => {
-      const createdAt = d.data().createdAt?.toDate ? d.data().createdAt.toDate() : null;
-      return createdAt && parisDateKey(createdAt) === todayKey;
-    });
-    if (isDuplicateToday) {
-      res.status(200).json({ ok: true, duplicate: true });
-      return;
-    }
+    const dedupeId = `${smsHash}_${parisDateKey(new Date())}`;
 
     const settingsSnap = await db.collection("settings").doc("general").get();
     if (!settingsSnap.exists) {
@@ -304,7 +313,11 @@ exports.receiveSms = onRequest({ invoker: "public" }, async (req, res) => {
         createdBy: null, createdByName: "SMS automatique",
         smsHash, smsFrom: from
       };
-      const ref = await db.collection("yieldAlerts").add(alertData);
+      const ref = await createDeduped("yieldAlerts", dedupeId, alertData);
+      if (!ref) {
+        res.status(200).json({ ok: true, duplicate: true });
+        return;
+      }
       await db.collection("history").add({
         kind: "yield", yieldAlertId: ref.id,
         text: team
@@ -344,7 +357,11 @@ exports.receiveSms = onRequest({ invoker: "public" }, async (req, res) => {
       createdBy: null, createdByName: "SMS automatique",
       smsHash, smsFrom: from
     };
-    const ref = await db.collection("requests").add(requestData);
+    const ref = await createDeduped("requests", dedupeId, requestData);
+    if (!ref) {
+      res.status(200).json({ ok: true, duplicate: true });
+      return;
+    }
     await db.collection("history").add({
       requestId: ref.id,
       text: team ? `Demande ${poste || "(sans code)"} créée automatiquement par SMS, attribuée à ${team.cm}`
