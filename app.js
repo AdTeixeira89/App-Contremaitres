@@ -506,9 +506,7 @@ function renderRendementCdtList(rows){
     chartEl.hidden=false;
     const history=cdtScoreHistory(rows,selectedRendementCdt);
     const entries=history.map(h=>[fmtShortDate(h.date),h.score]);
-    const type=document.getElementById("rendementCdtChartType").value;
-    if(type==="line") renderLineChart("rendementCdtChart",entries);
-    else renderVBars("rendementCdtChart",entries);
+    renderLineChart("rendementCdtChart",entries);
   };
   el.querySelectorAll(".cdt-chip").forEach(b=>b.addEventListener("click",()=>{
     const c=b.dataset.cdt;
@@ -959,82 +957,39 @@ function renderRendementHistory(){
   </div>`).join(""):`<div class="empty-state">Aucun historique</div>`;
 }
 
-function renderVBars(id,entries){
+const DEPOT_COLORS={"14":"#2563eb","37":"#16a34a","47":"#d97706"};
+function depotColor(depot){ return DEPOT_COLORS[depot] || "#6b7280"; }
+function renderVBars(id,entries,colorFn){
   const el=document.getElementById(id);
   if(!entries.length){el.className="vbar-chart empty-state";el.textContent="Aucune donnée";return;}
   const max=Math.max(...entries.map(x=>x[1]),1);
   el.className="vbar-chart";
-  el.innerHTML=entries.map(([label,val])=>`<div class="vbar-col"><strong>${val}</strong><div class="vbar-track"><div class="vbar-fill" style="height:${(val/max)*100}%"></div></div><span title="${escapeHtml(label)}">${escapeHtml(label)}</span></div>`).join("");
+  el.innerHTML=entries.map(([label,val])=>{
+    const color=colorFn?colorFn(label):null;
+    return `<div class="vbar-col"><strong>${val}</strong><div class="vbar-track"><div class="vbar-fill" style="height:${(val/max)*100}%${color?`;background:${color}`:""}"></div></div><span title="${escapeHtml(label)}">${escapeHtml(label)}</span></div>`;
+  }).join("");
 }
-function periodKey(dateStr,gran){
-  const d=new Date(dateStr);
-  if(Number.isNaN(d.getTime()))return null;
-  if(gran==="annee")return {key:`${d.getFullYear()}`,label:`${d.getFullYear()}`};
-  if(gran==="semaine"){
-    const onejan=new Date(d.getFullYear(),0,1);
-    const week=Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);
-    const k=`${d.getFullYear()}-S${String(week).padStart(2,"0")}`;
-    return {key:k,label:`S${week} ${d.getFullYear()}`};
-  }
-  const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-  const label=d.toLocaleDateString("fr-FR",{month:"short",year:"numeric"});
-  return {key:k,label};
+function renderDepotLegend(depots){
+  const el=document.getElementById("rendementDepotLegend");
+  if(!el)return;
+  const present=[...new Set(depots.filter(Boolean))].sort();
+  el.innerHTML=present.map(d=>`<span class="depot-legend-item"><span class="depot-dot" style="background:${depotColor(d)}"></span>Dépôt ${escapeHtml(d)}</span>`).join("");
 }
-function groupByPeriod(rows,gran,valueFn){
-  const map={};
-  rows.forEach(r=>{
-    const p=periodKey(r.date,gran);
-    if(!p)return;
-    if(!map[p.key])map[p.key]={label:p.label,total:0};
-    map[p.key].total+=valueFn(r);
-  });
-  return Object.keys(map).sort().map(k=>[map[k].label,map[k].total]);
-}
-function renderTeamHistory(rows,granId,modeId,containerId,valueFn){
-  const gran=document.getElementById(granId).value;
-  const mode=document.getElementById(modeId).value;
-  const container=document.getElementById(containerId);
-  const teams=[...new Set(rows.map(r=>r.equipe).filter(Boolean))].sort();
-  if(!teams.length){container.innerHTML=`<article class="panel"><div class="empty-state">Aucune donnée</div></article>`;return;}
-  if(mode==="toutes"){
-    const totals=teams.map(t=>[t,rows.filter(r=>r.equipe===t).reduce((s,r)=>s+valueFn(r),0)]);
-    container.innerHTML=`<article class="panel"><div class="panel-header"><h2>Comparaison des équipes</h2></div><div class="vbar-chart" id="${containerId}-combined"></div></article>`;
-    renderVBars(`${containerId}-combined`,totals);
-    return;
-  }
-  container.innerHTML=`<article class="panel"><div class="panel-header"><h2>Historique par équipe</h2></div><div class="cdt-list" id="${containerId}-list"></div><div id="${containerId}-chart" class="vbar-chart" style="margin-top:16px" hidden></div></article>`;
-  const listEl=document.getElementById(`${containerId}-list`);
-  const chartEl=document.getElementById(`${containerId}-chart`);
-  listEl.innerHTML=teams.map(t=>`<button type="button" class="cdt-chip" data-team="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join("");
-  let selected=null;
-  listEl.querySelectorAll(".cdt-chip").forEach(b=>b.addEventListener("click",()=>{
-    const t=b.dataset.team;
-    if(selected===t){
-      selected=null;
-      chartEl.hidden=true;
-      listEl.querySelectorAll(".cdt-chip").forEach(x=>x.classList.remove("active"));
-      return;
-    }
-    selected=t;
-    listEl.querySelectorAll(".cdt-chip").forEach(x=>x.classList.toggle("active",x.dataset.team===t));
-    chartEl.hidden=false;
-    renderVBars(`${containerId}-chart`,groupByPeriod(rows.filter(r=>r.equipe===t),gran,valueFn));
-  }));
-}
-function renderRendementTeamHistory(rows){
+function renderRendementTeamComparison(rows){
   const depot=document.getElementById("rendementHistDepot").value;
-  const filtered = depot ? rows.filter(r=>{
-    const team=state.teams.find(t=>t.name===r.equipe);
-    return team && team.depot===depot;
-  }) : rows;
-  renderTeamHistory(filtered,"rendementHistGranularity","rendementHistMode","rendementHistCharts",r=>Number(r.score)||0);
+  const teamDepot=t=>state.teams.find(x=>x.name===t)?.depot||"";
+  const filtered = depot ? rows.filter(r=>teamDepot(r.equipe)===depot) : rows;
+  const teams=[...new Set(filtered.map(r=>r.equipe).filter(Boolean))].sort();
+  const totals=teams.map(t=>[t,filtered.filter(r=>r.equipe===t).reduce((s,r)=>s+(Number(r.score)||0),0)]);
+  renderVBars("rendementHistCharts",totals,label=>depotColor(teamDepot(label)));
+  renderDepotLegend(teams.map(teamDepot));
 }
 function renderRendementStats(){
   const rows = state.yieldAlerts;
   renderRendementCdtList(rows);
-  renderRendementTeamHistory(rows);
+  renderRendementTeamComparison(rows);
 }
-["rendementHistDepot","rendementHistGranularity","rendementHistMode","rendementCdtChartType"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
+["rendementHistDepot"].forEach(id=>document.getElementById(id).addEventListener("input", renderRendementStats));
 
 async function saveRendementSettings(){
   await setDoc(doc(db,"settings","rendement"), {

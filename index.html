@@ -73,7 +73,7 @@
         </div>
         <div class="nav-group rendement">
           <div class="nav-section">Rendement</div>
-          <button class="nav-item" data-view="rendement-new">Nouveau</button>
+          <button class="nav-item" data-view="rendement-new">Nouveau message</button>
           <button class="nav-item" data-view="rendement-list">Alertes</button>
           <button class="nav-item" data-view="rendement-history">Historique</button>
           <button class="nav-item" data-view="rendement-stats">Statistiques</button>
@@ -320,8 +320,8 @@ Postes travaillés :
         <article class="panel">
           <div class="panel-header wrap">
             <div>
-              <h2>Historique rendement par équipe</h2>
-              <p>Score total par équipe, dans le temps.</p>
+              <h2>Rendement par équipe</h2>
+              <p>Score total par équipe.</p>
             </div>
             <div class="filters">
               <select id="rendementHistDepot">
@@ -330,29 +330,15 @@ Postes travaillés :
                 <option value="37">Dépôt 37</option>
                 <option value="47">Dépôt 47</option>
               </select>
-              <select id="rendementHistGranularity">
-                <option value="semaine">Par semaine</option>
-                <option value="mois" selected>Par mois</option>
-                <option value="annee">Par année</option>
-              </select>
-              <select id="rendementHistMode">
-                <option value="equipe" selected>Un graphique par équipe</option>
-                <option value="toutes">Toutes les équipes (comparaison)</option>
-              </select>
             </div>
           </div>
+          <div id="rendementDepotLegend" class="depot-legend"></div>
+          <div id="rendementHistCharts" class="vbar-chart"></div>
         </article>
-        <div id="rendementHistCharts"></div>
         <article class="panel">
-          <div class="panel-header wrap">
-            <h2>Rendements par CDT</h2>
-            <select id="rendementCdtChartType">
-              <option value="bar" selected>Graphique en barres</option>
-              <option value="line">Graphique en ligne</option>
-            </select>
-          </div>
+          <div class="panel-header"><h2>Rendements par CDT</h2></div>
           <div id="rendementCdtList" class="cdt-list empty-state">Aucune donnée</div>
-          <div id="rendementCdtChart" class="vbar-chart" style="margin-top:16px" hidden></div>
+          <div id="rendementCdtChart" class="line-chart" style="margin-top:16px" hidden></div>
         </article>
       </section>
 

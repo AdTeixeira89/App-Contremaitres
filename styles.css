@@ -97,3 +97,7 @@ dialog{border:0;border-radius:18px;padding:0;box-shadow:0 25px 70px rgba(0,0,0,.
 #view-settings .panel.collapsed .panel-header::after{transform:rotate(-90deg)}
 #view-settings .panel.collapsed>*:not(.panel-header){display:none}
 #view-settings .panel:not(.collapsed) .panel-header{margin-bottom:18px}
+
+.depot-legend{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0 4px}
+.depot-legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.depot-dot{width:10px;height:10px;border-radius:50%;display:inline-block}
